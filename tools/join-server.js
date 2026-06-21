@@ -12,6 +12,7 @@ const http = require('http');
 
 const REDIS_URL   = process.env.JOIN_REDIS_URL || process.env.REDIS_URL;
 const MODEL       = process.env.JOIN_MODEL || process.env.MODEL || '';   // пусто → install.* сам подберёт по железу
+const TIER        = process.env.JOIN_TIER || process.env.TIER || '';     // пусто → install.* выведет тир из MODEL/лестницы
 const OLLAMA_URL  = process.env.JOIN_OLLAMA_URL || 'http://127.0.0.1:11434';
 const INSTALL     = process.env.JOIN_INSTALL_URL || 'https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.sh';
 const INSTALL_PS1 = process.env.JOIN_INSTALL_PS1_URL || 'https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.ps1';
@@ -20,11 +21,11 @@ const PORT = parseInt(process.env.JOIN_PORT || '8088', 10);
 
 if (!REDIS_URL) { console.error('✗ задай JOIN_REDIS_URL (redis://:PASS@<tailscale-ip>:6379)'); process.exit(1); }
 
-// MODEL='' → не передаём в install.sh, чтобы сработал авто-подбор по железу. Иначе задаём явно.
+// MODEL/TIER='' → не передаём в install.*, чтобы сработал авто-подбор по железу. Иначе задаём явно.
 const bashBootstrap = `#!/usr/bin/env bash
 set -euo pipefail
 echo "▶ join llm-fleet"
-curl -fsSL ${INSTALL} | REDIS_URL='${REDIS_URL}'${MODEL ? ` MODEL='${MODEL}'` : ''} OLLAMA_URL='${OLLAMA_URL}' bash
+curl -fsSL ${INSTALL} | REDIS_URL='${REDIS_URL}'${MODEL ? ` MODEL='${MODEL}'` : ''}${TIER ? ` TIER='${TIER}'` : ''} OLLAMA_URL='${OLLAMA_URL}' bash
 `;
 
 // PS1-вариант для Windows: инжектит те же env и заканчивается iex-запуском install.ps1.
@@ -32,7 +33,7 @@ const ps1Bootstrap = `# join llm-fleet (Windows / PowerShell as admin)
 $ErrorActionPreference = 'Stop'
 Write-Host "> join llm-fleet"
 $env:REDIS_URL  = '${REDIS_URL}'
-${MODEL ? `$env:MODEL = '${MODEL}'\n` : ''}$env:OLLAMA_URL = '${OLLAMA_URL}'
+${MODEL ? `$env:MODEL = '${MODEL}'\n` : ''}${TIER ? `$env:TIER = '${TIER}'\n` : ''}$env:OLLAMA_URL = '${OLLAMA_URL}'
 irm ${INSTALL_PS1} | iex
 `;
 

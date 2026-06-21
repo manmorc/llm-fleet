@@ -8,11 +8,12 @@ $ErrorActionPreference = 'Stop'
 
 # ── Лестница моделей: подбор по бюджету памяти (GB). РЕДАКТИРУЙ ТУТ, чтобы сменить семейство. ──
 # Зеркало MODEL_LADDER из install.sh. Бюджет Q4 ≈ params×0.65 GB. Сортировка по убыванию.
+# Тир (Routing v2) определяет очередь воркера llm:<тир>: strong|fast (embed зарезервирован).
 $ModelLadder = @(
-  @{ Min = 22; Model = 'qwen3:32b' }   # strong
-  @{ Min = 11; Model = 'qwen3:14b' }   # fast
-  @{ Min = 6;  Model = 'qwen3:8b'  }
-  @{ Min = 0;  Model = 'qwen3:4b'  }   # light (всё, что меньше 6GB)
+  @{ Min = 22; Model = 'qwen3:32b'; Tier = 'strong' }
+  @{ Min = 11; Model = 'qwen3:14b'; Tier = 'fast'   }
+  @{ Min = 6;  Model = 'qwen3:8b';  Tier = 'fast'   }
+  @{ Min = 0;  Model = 'qwen3:4b';  Tier = 'fast'   }   # light (всё, что меньше 6GB) тоже в fast
 )
 $EmbedModel = 'nomic-embed-text'       # эмбеддинги тянет КАЖДЫЙ узел
 
@@ -48,30 +49,43 @@ function Get-Budget {
   return [pscustomobject]@{ Kind = $kind; Budget = $budget; CpuOnly = $cpuOnly }
 }
 
+# Возвращает рунг { Model; Tier }, подобранный по бюджету (CPU-only → самый лёгкий).
 function Select-Model {
   param([int]$Budget, [bool]$CpuOnly)
   $chosen = $null
   foreach ($rung in $ModelLadder) {
-    if ($Budget -ge $rung.Min) { $chosen = $rung.Model; break }
+    if ($Budget -ge $rung.Min) { $chosen = $rung; break }
   }
-  if (-not $chosen) { $chosen = $ModelLadder[-1].Model }
+  if (-not $chosen) { $chosen = $ModelLadder[-1] }
 
-  # CPU-only: не запускаем тяжёлую генерацию — потолок light/embed.
-  if ($CpuOnly) { $chosen = $ModelLadder[-1].Model }
+  # CPU-only: не запускаем тяжёлую генерацию — потолок light (самый лёгкий рунг).
+  if ($CpuOnly) { $chosen = $ModelLadder[-1] }
   return $chosen
+}
+
+# Тир модели из лестницы (Routing v2). Если модели нет в лестнице — fast.
+function Tier-ForModel {
+  param([string]$M)
+  foreach ($rung in $ModelLadder) { if ($rung.Model -eq $M) { return $rung.Tier } }
+  return 'fast'
 }
 
 if ($env:MODEL) {
   $Model = $env:MODEL
-  Write-Host "> MODEL задан явно: $Model (авто-подбор пропущен)"
+  # TIER из env имеет приоритет, иначе выводим из лестницы (по умолчанию fast).
+  $Tier  = if ($env:TIER) { $env:TIER } else { Tier-ForModel -M $Model }
+  Write-Host "> MODEL задан явно: $Model (тир=$Tier, авто-подбор пропущен)"
 } else {
   $hw = Get-Budget
-  $Model = Select-Model -Budget $hw.Budget -CpuOnly $hw.CpuOnly
-  $cap = if ($hw.CpuOnly) { ' (CPU-only -> потолок light/embed)' } else { '' }
-  Write-Host "> железо: $($hw.Kind) · бюджет ~$($hw.Budget)GB$cap -> MODEL=$Model"
+  $rung = Select-Model -Budget $hw.Budget -CpuOnly $hw.CpuOnly
+  $Model = $rung.Model
+  # Явный TIER из env имеет приоритет над выведенным из лестницы.
+  $Tier  = if ($env:TIER) { $env:TIER } else { $rung.Tier }
+  $cap = if ($hw.CpuOnly) { ' (CPU-only -> потолок light)' } else { '' }
+  Write-Host "> железо: $($hw.Kind) · бюджет ~$($hw.Budget)GB$cap -> MODEL=$Model тир=$Tier"
 }
 
-Write-Host "> llm-fleet -> $Dir  (redis=$RedisUrl  model=$Model  embed=$EmbedModel)"
+Write-Host "> llm-fleet -> $Dir  (redis=$RedisUrl  model=$Model  tier=$Tier  embed=$EmbedModel)"
 
 # ── Зависимости ─────────────────────────────────────────────────────────────────
 # Node 18+ обязателен (как в install.sh — не ставим автоматически).
@@ -115,6 +129,7 @@ Write-Host "> npm install"; npm install --omit=dev
 @"
 REDIS_URL=$RedisUrl
 MODEL=$Model
+TIER=$Tier
 OLLAMA_URL=$OllamaUrl
 CONCURRENCY=$Concurrency
 "@ | Set-Content -Path (Join-Path $Dir '.env') -Encoding utf8 -NoNewline

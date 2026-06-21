@@ -6,13 +6,14 @@
 set -euo pipefail
 
 # ── Лестница моделей: подбор по бюджету памяти (GB). РЕДАКТИРУЙ ТУТ, чтобы сменить семейство. ──
-# Формат строки: "<минимум_GB> <модель>". Сортировка по убыванию — берётся первая подходящая.
+# Формат строки: "<минимум_GB> <модель> <тир>". Сортировка по убыванию — берётся первая подходящая.
+# Тир (Routing v2) определяет очередь воркера llm:<тир>: strong|fast (embed зарезервирован под эмбеддинги).
 # Бюджет Q4 ≈ params×0.65 GB.
 MODEL_LADDER=(
-  "22 qwen3:32b"   # strong
-  "11 qwen3:14b"   # fast
-  "6  qwen3:8b"
-  "0  qwen3:4b"    # light (всё, что меньше 6GB)
+  "22 qwen3:32b strong"
+  "11 qwen3:14b fast"
+  "6  qwen3:8b  fast"
+  "0  qwen3:4b  fast"    # light (всё, что меньше 6GB) тоже едет в fast
 )
 EMBED_MODEL="nomic-embed-text"   # эмбеддинги тянет КАЖДЫЙ узел
 
@@ -62,31 +63,45 @@ detect_budget() {
   echo "$gpu_kind $budget $cpu_only"
 }
 
+# Печатает "<модель> <тир>" (две колонки) — вызывающий читает обе через read.
 pick_model() {
-  local budget="$1" cpu_only="$2" chosen="" floor min model
+  local budget="$1" cpu_only="$2" chosen="" chosen_tier="" min model tier
   for rung in "${MODEL_LADDER[@]}"; do
-    min="${rung%% *}"; model="${rung##* }"
-    if [ "$budget" -ge "$min" ]; then chosen="$model"; break; fi
+    read -r min model tier <<<"$rung"
+    if [ "$budget" -ge "$min" ]; then chosen="$model"; chosen_tier="$tier"; break; fi
   done
-  [ -z "$chosen" ] && chosen="${MODEL_LADDER[-1]##* }"
+  if [ -z "$chosen" ]; then read -r min chosen chosen_tier <<<"${MODEL_LADDER[-1]}"; fi
 
-  # CPU-only: не запускаем тяжёлую генерацию — ограничиваем потолок light/embed.
+  # CPU-only: не запускаем тяжёлую генерацию — ограничиваем потолок light (самый лёгкий рунг).
   if [ "$cpu_only" = "1" ]; then
-    floor="${MODEL_LADDER[-1]##* }"   # самый лёгкий рунг = light
-    chosen="$floor"
+    read -r min chosen chosen_tier <<<"${MODEL_LADDER[-1]}"
   fi
-  echo "$chosen"
+  echo "$chosen $chosen_tier"
+}
+
+# Тир модели из лестницы (Routing v2). Если модели нет в лестнице — fast.
+tier_for_model() {
+  local m="$1" min model tier
+  for rung in "${MODEL_LADDER[@]}"; do
+    read -r min model tier <<<"$rung"
+    if [ "$model" = "$m" ]; then echo "$tier"; return; fi
+  done
+  echo "fast"
 }
 
 if [ -n "${MODEL:-}" ]; then
-  echo "▶ MODEL задан явно: $MODEL (авто-подбор пропущен)"
+  # MODEL задан явно: TIER берём из env, иначе выводим из лестницы (по умолчанию fast).
+  TIER="${TIER:-$(tier_for_model "$MODEL")}"
+  echo "▶ MODEL задан явно: $MODEL (тир=$TIER, авто-подбор пропущен)"
 else
   read -r GPU_KIND BUDGET_GB CPU_ONLY <<<"$(detect_budget)"
-  MODEL="$(pick_model "$BUDGET_GB" "$CPU_ONLY")"
-  echo "▶ железо: $GPU_KIND · бюджет ≈ ${BUDGET_GB}GB$([ "$CPU_ONLY" = "1" ] && echo ' (CPU-only → потолок light/embed)') → MODEL=$MODEL"
+  read -r MODEL PICKED_TIER <<<"$(pick_model "$BUDGET_GB" "$CPU_ONLY")"
+  # Явный TIER из env имеет приоритет над выведенным из лестницы.
+  TIER="${TIER:-$PICKED_TIER}"
+  echo "▶ железо: $GPU_KIND · бюджет ≈ ${BUDGET_GB}GB$([ "$CPU_ONLY" = "1" ] && echo ' (CPU-only → потолок light)') → MODEL=$MODEL тир=$TIER"
 fi
 
-echo "▶ llm-fleet → $DIR  (redis=$REDIS_URL  model=$MODEL  embed=$EMBED_MODEL)"
+echo "▶ llm-fleet → $DIR  (redis=$REDIS_URL  model=$MODEL  tier=$TIER  embed=$EMBED_MODEL)"
 
 command -v node  >/dev/null || { echo "✗ нужен Node.js 18+ (поставь и повтори)"; exit 1; }
 command -v git   >/dev/null || { echo "✗ нужен git"; exit 1; }
@@ -100,6 +115,7 @@ echo "▶ npm install"; npm install --omit=dev
 cat > .env <<EOF
 REDIS_URL=$REDIS_URL
 MODEL=$MODEL
+TIER=$TIER
 OLLAMA_URL=$OLLAMA_URL
 CONCURRENCY=$CONCURRENCY
 EOF
