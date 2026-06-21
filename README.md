@@ -13,12 +13,24 @@ backend кладёт задачи ─▶ Redis + BullMQ (очередь) ─▶ 
 - **Redis** на всегда-онлайн машине (или в облаке). Доступен остальным по сети (удобно через Tailscale).
 - На каждой воркер-машине: Node 18+, Ollama (ставится автоматически).
 
-## Установка воркера — одной командой
+## Присоединить машину из VPN — ОДНОЙ ссылкой (рекомендуется)
+Если машина уже в Tailscale/VPN — на всегда-онлайн хосте раздаём bootstrap (с встроенным Redis-URL, секрет берётся из env хоста, НЕ из репо):
+```bash
+# на хосте (там же, где Redis):
+JOIN_REDIS_URL='redis://:PASS@<tailscale-ip>:6379' JOIN_HOST=<tailscale-ip> node tools/join-server.js
+```
+Тогда на ЛЮБОЙ машине в сети — одна команда, без ввода env:
+```bash
+curl -fsSL http://<tailscale-ip>:8088 | bash
+```
+Привязка к Tailscale-IP → раздаётся только пирам сети, наружу не торчит.
+
+## Установка воркера — вручную (с явным Redis-URL)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.sh \
-  | REDIS_URL=redis://<tailscale-ip>:6379 MODEL=qwen2.5:7b bash
+  | REDIS_URL=redis://:PASS@<tailscale-ip>:6379 MODEL=qwen2.5:7b bash
 ```
-Скрипт: поставит Ollama/pm2 → склонирует репо → `npm i` → запишет `.env` → `ollama pull` модели → запустит воркер под **pm2** (живёт после ребута). Добавление 2-й/3-й машины — та же команда.
+Скрипт: поставит Ollama/pm2 → склонирует репо → `npm i` → запишет `.env` → `ollama pull` модели → запустит воркер под **pm2** (живёт после ребута).
 
 ## Управление флотом (с любой машины, видящей Redis)
 ```bash
