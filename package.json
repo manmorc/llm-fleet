@@ -1,0 +1,15 @@
+{
+  "name": "llm-fleet",
+  "version": "0.1.0",
+  "description": "Распределённый пул LLM-воркеров: очередь задач (BullMQ/Redis) + локальные модели (Ollama) + удалённое управление и self-update",
+  "bin": { "fleet": "bin/fleet.js" },
+  "scripts": {
+    "worker": "node src/worker.js",
+    "fleet": "node bin/fleet.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.34.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1"
+  }
+}

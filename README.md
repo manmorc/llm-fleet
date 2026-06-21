@@ -1,0 +1,56 @@
+# llm-fleet
+
+Распределённый пул LLM-воркеров: очередь задач (**BullMQ/Redis**) + локальные модели (**Ollama**) на нескольких машинах, с **удалённым управлением** и **self-update** — без захода на каждую машину.
+
+Балансировка — самой очередью (воркеры тянут задачи, когда свободны → ровно и автоматически). Добавил машину → она сама начинает разгребать. Тип распараллеливания — **data-parallel** (много одинаковых воркеров на независимых задачах), не дробление одной модели.
+
+```
+backend кладёт задачи ─▶ Redis + BullMQ (очередь) ─▶ N воркеров (Ollama) на GPU-машинах
+                              └ fleet:control (pub/sub) ──┘  ◀─ heartbeat в Redis
+```
+
+## Что нужно один раз
+- **Redis** на всегда-онлайн машине (или в облаке). Доступен остальным по сети (удобно через Tailscale).
+- На каждой воркер-машине: Node 18+, Ollama (ставится автоматически).
+
+## Установка воркера — одной командой
+```bash
+curl -fsSL https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.sh \
+  | REDIS_URL=redis://<tailscale-ip>:6379 MODEL=qwen2.5:7b bash
+```
+Скрипт: поставит Ollama/pm2 → склонирует репо → `npm i` → запишет `.env` → `ollama pull` модели → запустит воркер под **pm2** (живёт после ребута). Добавление 2-й/3-й машины — та же команда.
+
+## Управление флотом (с любой машины, видящей Redis)
+```bash
+node bin/fleet.js status                                  # кто онлайн, версия/модель/занятость
+node bin/fleet.js submit parseSignal '{"text":"BTC long entry 65000 sl 63000 tp 70000"}'
+node bin/fleet.js broadcast update                        # все: git pull + npm i + restart
+node bin/fleet.js broadcast set-model '{"model":"qwen2.5:14b"}'  # все переходят на модель (ollama pull)
+node bin/fleet.js broadcast reload                        # горячая перечитка скилов (без рестарта)
+node bin/fleet.js broadcast drain                         # доделать текущее, новые не брать
+node bin/fleet.js broadcast rollback '{"ref":"<tag|hash>"}'      # откат на версию
+```
+
+## Скилы
+Каждый скил — файл в `src/skills/*.js`: `{ name, async run(payload, ctx) }`. Добавить умение всему флоту = добавить файл + `broadcast update` (или `reload`). Из коробки:
+- **echo** — без LLM, для проверки механики.
+- **parseSignal** — парс сообщения крипто-канала в структурный сигнал (локальной моделью, JSON).
+
+Отладка скила локально (без Redis/очереди):
+```bash
+node src/run-skill.js echo '{"text":"hi"}'
+node src/run-skill.js parseSignal '{"text":"..."}'      # нужен запущенный Ollama
+```
+
+## Удалённые апдейты — два уровня
+- **Скилы/промпты** — горячо (`reload`), без рестарта.
+- **Код воркера** — `update` (git pull + npm i + pm2 restart, отвязанным процессом → переживает рестарт).
+- **Безопасность:** control-канал держи только в приватной сети (Tailscale) + Redis с паролем. Плохой коммит может положить флот — катай код через **одну canary-машину** (адресная команда `target`), проверяй `status`, потом `broadcast`. Откат — `rollback`.
+
+## Интеграция (следующий шаг)
+Любой бэкенд кладёт задачу в ту же очередь:
+```js
+const { Queue } = require('bullmq'); const IORedis = require('ioredis');
+const q = new Queue('llm-tasks', { connection: new IORedis(process.env.REDIS_URL) });
+const job = await q.add('parseSignal', { text }); // результат: job.waitUntilFinished(queueEvents)
+```
