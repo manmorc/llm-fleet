@@ -3,6 +3,7 @@ const IORedis = require('ioredis');
 const os = require('os');
 const cfg = require('./config');
 const skills = require('./skills');
+const { chat } = require('./ollama');
 const { setupControl } = require('./control');
 const { version } = require('./version');
 
@@ -13,7 +14,8 @@ const connection = new IORedis(cfg.redisUrl, { maxRetriesPerRequest: null });
 const worker = new Worker(cfg.queue, async (job) => {
   const skill = skills.get(job.name);
   if (!skill) throw new Error(`Неизвестный скил: ${job.name} (есть: ${skills.list().join(', ')})`);
-  return skill.run(job.data, { model: job.data?._model || cfg.model });
+  // ctx даёт скилу унифицированный доступ к модели — скилы не зависят от транспорта
+  return skill.run(job.data, { model: job.data?._model || cfg.model, chat });
 }, { connection, concurrency: cfg.concurrency });
 
 let busy = 0;

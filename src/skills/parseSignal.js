@@ -9,11 +9,11 @@ confidence 0-100 — насколько уверенно подан сигнал
 
 module.exports = {
   name: 'parseSignal',
-  async run(payload, { model } = {}) {
+  async run(payload, ctx = {}) {
     const text = (typeof payload === 'string' ? payload : payload?.text || '').slice(0, 4000);
-    const out = await chat(
+    const out = await (ctx.chat || chat)(
       [{ role: 'system', content: SYS }, { role: 'user', content: text }],
-      { model: model || cfg.model, format: 'json' },
+      { model: ctx.model || cfg.model, format: 'json' },
     );
     try { return JSON.parse(out); }
     catch (_) { return { isSignal: false, parseError: true, raw: String(out).slice(0, 300) }; }

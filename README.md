@@ -31,10 +31,27 @@ node bin/fleet.js broadcast drain                         # доделать т�
 node bin/fleet.js broadcast rollback '{"ref":"<tag|hash>"}'      # откат на версию
 ```
 
+## Generic: принимает ЛЮБЫЕ задачи из ЛЮБЫХ проектов
+Флот не привязан к какому-либо приложению. Воркер просто исполняет скил по `job.name`. Два способа использовать из стороннего проекта **без доработок флота**:
+
+1. **Универсальный скил `chat`** — произвольный промпт, ничего ставить не надо:
+   ```js
+   const { Queue, QueueEvents } = require('bullmq'); const IORedis = require('ioredis');
+   const conn = new IORedis(process.env.REDIS_URL);
+   const q = new Queue('llm-tasks', { connection: conn });
+   const ev = new QueueEvents('llm-tasks', { connection: conn });
+   const job = await q.add('chat', { prompt: 'Суммаризируй: ...', model: 'qwen2.5:7b', format: 'json' });
+   const { content } = await job.waitUntilFinished(ev);   // ← результат
+   ```
+2. **Свой скил** (если задача частая/со своей логикой) — добавить файл в `src/skills/` и `broadcast update`. Тогда проект кладёт `q.add('<имя-скила>', payload)`.
+
+Любое число проектов кладут задачи в **одну общую очередь** — воркеры разгребают их вперемешку, балансировка автоматическая. Изоляция/приоритеты при желании — отдельными очередями (воркер слушает `QUEUE`), но для «принимай что приходит» хватает общей.
+
 ## Скилы
-Каждый скил — файл в `src/skills/*.js`: `{ name, async run(payload, ctx) }`. Добавить умение всему флоту = добавить файл + `broadcast update` (или `reload`). Из коробки:
+Каждый скил — файл в `src/skills/*.js`: `{ name, async run(payload, ctx) }`, где `ctx.chat(messages, opts)` — унифицированный доступ к модели (скил не зависит от транспорта). Добавить умение всему флоту = файл + `broadcast update` (или `reload`). Из коробки:
+- **chat** — универсальный: произвольный промпт → ответ (любой проект, любая задача).
 - **echo** — без LLM, для проверки механики.
-- **parseSignal** — парс сообщения крипто-канала в структурный сигнал (локальной моделью, JSON).
+- **parseSignal** — пример доменного скила: сообщение крипто-канала → структурный сигнал (JSON).
 
 Отладка скила локально (без Redis/очереди):
 ```bash
