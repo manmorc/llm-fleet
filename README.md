@@ -21,16 +21,24 @@ JOIN_REDIS_URL='redis://:PASS@<tailscale-ip>:6379' JOIN_HOST=<tailscale-ip> node
 ```
 Тогда на ЛЮБОЙ машине в сети — одна команда, без ввода env:
 ```bash
+# mac / linux:
 curl -fsSL http://<tailscale-ip>:8088 | bash
+# windows (PowerShell as admin):
+irm http://<tailscale-ip>:8088/ps1 | iex
 ```
 Привязка к Tailscale-IP → раздаётся только пирам сети, наружу не торчит.
 
 ## Установка воркера — вручную (с явным Redis-URL)
 ```bash
+# mac / linux — MODEL подберётся по железу автоматически:
 curl -fsSL https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.sh \
-  | REDIS_URL=redis://:PASS@<tailscale-ip>:6379 MODEL=qwen2.5:7b bash
+  | REDIS_URL=redis://:PASS@<tailscale-ip>:6379 bash
+# windows:
+$env:REDIS_URL='redis://:PASS@<tailscale-ip>:6379'; irm https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.ps1 | iex
 ```
 Скрипт: поставит Ollama/pm2 → склонирует репо → `npm i` → запишет `.env` → `ollama pull` модели → запустит воркер под **pm2** (живёт после ребута).
+
+**Авто-подбор модели по железу** (если `MODEL` не задан явно): бюджет памяти = NVIDIA dGPU → VRAM · Apple Silicon → RAM×0.7 · CPU-only → RAM×0.6 (потолок light/embed). Лестница (Q4 ≈ params×0.65 GB): ≥22GB→`qwen3:32b` · ≥11GB→`qwen3:14b` · ≥6GB→`qwen3:8b` · <6GB→`qwen3:4b`; плюс `nomic-embed-text` на всех. Лестница редактируется массивом в начале `install.sh` / `install.ps1`. Явный `MODEL=...` всё так же переопределяет авто-подбор.
 
 ## Управление флотом (с любой машины, видящей Redis)
 ```bash
