@@ -3,3 +3,6 @@ node_modules
 *.log
 npm-debug.log*
 .DS_Store
+
+# local MCP config (may contain secrets)
+.mcp.json

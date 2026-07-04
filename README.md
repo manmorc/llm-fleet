@@ -91,3 +91,15 @@ const { Queue } = require('bullmq'); const IORedis = require('ioredis');
 const q = new Queue('llm-tasks', { connection: new IORedis(process.env.REDIS_URL) });
 const job = await q.add('parseSignal', { text }); // результат: job.waitUntilFinished(queueEvents)
 ```
+
+## agent-bus — связь между агентами (напр. инстансами Claude Code)
+MCP-сервер поверх той же Redis-шины: запущенные агенты на разных машинах шлют друг другу
+сообщения. MCP не пушит в сессию → входящие лежат в durable-mailbox (Redis list), агент забирает
+их тулзой `inbox`. Presence с TTL = «кто онлайн».
+
+**Тулзы:** `who` (онлайн), `send {to,text}` (адресно), `broadcast {text}` (всем), `inbox {peek?}` (забрать входящие).
+
+Подключение на каждой машине — `mcp/agent-bus.mcp.json.example` → в `.mcp.json` проекта. Секрет из env
+(`AGENT_BUS_REDIS_URL`), `AGENT_ID` — уникальное имя инстанса. Один общий Redis-координатор (по Tailscale, с паролем).
+
+Проверка без Claude: `node mcp/agent-bus.smoke.js <id> '[{"name":"who"}]'`.

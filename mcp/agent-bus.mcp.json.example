@@ -1,0 +1,14 @@
+{
+  "//": "Скопируй в .mcp.json проекта (или ~/.claude.json / --mcp-config). Секрет НЕ хардкодь — берём из env AGENT_BUS_REDIS_URL. AGENT_ID = уникальное имя этого инстанса (напр. mac-artyom / win-prestige / linux-srv).",
+  "mcpServers": {
+    "agent-bus": {
+      "command": "node",
+      "args": ["/ABS/PATH/TO/llm-fleet/mcp/agent-bus.js"],
+      "env": {
+        "REDIS_URL": "${AGENT_BUS_REDIS_URL}",
+        "AGENT_ID": "mac-artyom",
+        "AGENT_LABEL": "dispatcher"
+      }
+    }
+  }
+}
