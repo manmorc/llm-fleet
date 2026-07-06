@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# КАНОНИЧЕСКИЙ Stop-hook для Claude Code → Telegram-пинг по завершении обработки запроса.
-# Единый формат для всех машин флота (mac/linux/win). Контент — авто-суммаризация транскрипта
-# через haiku (агенту НИЧЕГО писать не надо; никакого /tmp-note). Секреты НЕ в репо — впиши локально.
+# КАНОНИЧЕСКИЙ Stop-hook для Claude Code → Telegram completion-пинг. Единый формат флота (mac/linux/win).
+# Контент — авто-суммаризация транскрипта через haiku (агенту ничего писать не надо). Секреты НЕ в репо.
 #
-# Формат сообщения:
-#   ✅ Claude · <machine>        (✅ успех / ❌ ошибка-или-не-завершено; 🤖 если суммари не вышло)
-#   🗂 <тема, ≤5 слов>
+# Формат сообщения (как у isolated-laptop):
+#   🤖 АГЕНТ · Claude · <machine> · 🟢 готово     (или · 🔴 ошибка)
+#   🗂 <тема, ≤6 слов>
 #   📝 <результат, ≤6 слов>
+#   (completion-пинг)
 #
-# Установка на машине:
-#   1) cp tools/claude-stop-notify.sh ~/.claude/hooks/notify.sh   (или свой путь)
-#   2) впиши TG_TOKEN/TG_CHAT (СВОИ, локально — не коммить), задай MACHINE (или env CLAUDE_MACHINE)
-#   3) в ~/.claude/settings.json повесь на Stop:  {"type":"command","command":"bash $HOME/.claude/hooks/notify.sh stop"}
-#   4) убери старый механизм (напр. правило «пиши /tmp/claude-tg-note» из CLAUDE.md) — он больше не нужен
-[ -n "${CC_ROUTINE:-}" ] && exit 0   # не дублируем при scheduled-ранах
+# Установка: cp сюда → ~/.claude/hooks/notify.sh; впиши СВОИ TG_TOKEN/TG_CHAT локально (не коммить);
+# задай MACHINE (или env CLAUDE_MACHINE); повесь на Stop в ~/.claude/settings.json:
+#   {"type":"command","command":"bash $HOME/.claude/hooks/notify.sh stop"}
+# Каждая машина держит СВОЙ хук/креды локально — по шине секреты не передаём (см. README §Безопасность).
+[ -n "${CC_ROUTINE:-}" ] && exit 0
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 TG_TOKEN="<ВПИШИ_СВОЙ_BOT_TOKEN>"     # локально, не коммить
 TG_CHAT="<ВПИШИ_СВОЙ_CHAT_ID>"        # локально, не коммить
-MACHINE="${CLAUDE_MACHINE:-$(hostname -s 2>/dev/null || echo host)}"   # метка машины: mac|linux|win
+MACHINE="${CLAUDE_MACHINE:-$(hostname -s 2>/dev/null || echo host)}"
 event="${1:-stop}"
 
 case "$event" in
@@ -54,10 +53,10 @@ for m in msgs[-20:]: print(m)
 
       if [ -n "$excerpt" ]; then
         summary="$(CC_ROUTINE=1 claude -p \
-          "Ты анализируешь лог диалога с ИИ-ассистентом. Ответь РОВНО ДВУМЯ строками — не копируй слова из диалога, сформулируй сам.
-Строка 1: абстрактная ТЕМА (категория работы, напр.: «Настройка Telegram-уведомлений», «Рефакторинг хука»). До 5 слов.
-Строка 2: ДОЛЖНА НАЧИНАТЬСЯ с ✅ (задача выполнена) или ❌ (ошибка/не завершена). Потом РЕЗУЛЬТАТ — что сделано. До 6 слов.
-Без кавычек, без нумерации, без пояснений.
+          "Ты анализируешь лог диалога с ИИ-ассистентом. Ответь РОВНО ДВУМЯ строками — сформулируй САМ, не копируй фразы из лога.
+Строка 1 — ТЕМА (категория работы, напр.: «Настройка Telegram-уведомлений», «Рефакторинг хука»). До 6 слов.
+Строка 2 — начни с ✅ (задача выполнена) или ❌ (ошибка/не завершена), затем РЕЗУЛЬТАТ (что сделано). До 6 слов.
+ЗАПРЕЩЕНО: эмодзи в тексте (кроме ✅/❌ в начале строки 2), символы 🗂/📝, строки вида «Claude · …», кавычки, нумерация, пояснения.
 ---
 $excerpt" \
           --model claude-haiku-4-5-20251001 \
@@ -67,19 +66,31 @@ $excerpt" \
     fi
 
     if [ -n "$summary" ]; then
-      topic="$(echo "$summary" | sed -n '1p' | cut -c1-80)"
-      result="$(echo "$summary" | sed -n '2p' | cut -c1-80)"
-      if echo "$result" | grep -q "^✅"; then header="✅"; else header="❌"; fi
-      result_clean="$(echo "$result" | sed 's/^[✅❌] *//')"
-      text="${header} Claude · ${MACHINE}"
+      parsed="$(printf '%s' "$summary" | python3 -c "
+import sys, re
+raw=sys.stdin.read()
+def lead(l): return re.sub(r'^[\s‍🗂📝✅❌🟢🔴🤖📌•*_-]+','',l).strip()
+lines=[lead(l) for l in raw.splitlines()]
+cand=[l for l in lines if l and not re.match(r'(?i)^claude\b',l) and not re.match(r'(?i)^(строка|line)\s*\d',l)]
+topic=' '.join((cand[0] if cand else '').split()[:6])
+result=' '.join((cand[1] if len(cand)>1 else '').split()[:6])
+status='❌' if '❌' in raw else '✅'
+print(status); print(topic); print(result)
+" 2>/dev/null)"
+      st="$(printf '%s' "$parsed" | sed -n '1p')"
+      topic="$(printf '%s' "$parsed" | sed -n '2p')"
+      result_clean="$(printf '%s' "$parsed" | sed -n '3p')"
+      if [ "$st" = "❌" ]; then status="🔴 ошибка"; else status="🟢 готово"; fi
+      text="🤖 АГЕНТ · Claude · ${MACHINE} · ${status}"
       [ -n "$topic" ] && text="${text}"$'\n'"🗂 ${topic}"
       [ -n "$result_clean" ] && text="${text}"$'\n'"📝 ${result_clean}"
+      text="${text}"$'\n'"(completion-пинг)"
     else
-      text="🤖 Claude · ${MACHINE}"
+      text="🤖 АГЕНТ · Claude · ${MACHINE} · 🟢 готово"$'\n'"(completion-пинг)"
     fi
     ;;
   *)
-    text="🤖 Claude · ${MACHINE}: $event"
+    text="🤖 АГЕНТ · Claude · ${MACHINE}: $event"
     ;;
 esac
 
