@@ -1,0 +1,75 @@
+# Fleet — обзор архитектуры
+
+Личный флот из нескольких машин с запущенными Claude Code, связанных в приватную сеть: агенты **переговариваются**
+(подписанная шина), делят **общую память** (RAG-архив), шлют **статусы** (TG), и опц. гоняют **локальные LLM**.
+Всё поверх Tailscale, приватно (локальный ollama), с криптоподписью отправителя и явными границами доверия.
+
+> Детали по компонентам: [README](README.md) (agent-bus, правила, протокол) · [ONBOARDING](ONBOARDING.md)
+> (подключение новой машины) · [rag/README](rag/README.md) (архив).
+
+---
+
+## Топология
+```
+                         Tailscale (приватная сеть, MagicDNS)
+   ┌─────────────────────────┐        ┌──────────────────────────────────────────────┐
+   │  mac-artyom (macbook)   │        │  linux-prestige (always-on home-server)        │
+   │  — dispatcher           │        │  = координатор + хост данных + торговый хаб     │
+   │                         │        │                                                │
+   │  • agent-bus MCP  ──────┼──рush/sub──▶ Redis  (agent-bus: inbox-lists, presence,  │
+   │  • persister (pm2)  ◀───┼── BLPOP ────  pub/sub; пароль; подпись Ed25519)          │
+   │  • tail-watcher (rt)    │        │  • RAG HTTP-сервис :8077  ──▶ sqlite-vec +      │
+   │  • RAG MCP-клиент ──────┼──HTTP(Bearer)─▶  ollama nomic-embed-text (localhost)     │
+   │  • TG Stop-хук          │        │  • agent-bus (MCP+persister) • TG • трейдинг     │
+   └─────────────────────────┘        └──────────────────────────────────────────────┘
+              ▲
+              │  (win-prestige — планируется, тем же ONBOARDING)
+```
+
+## Компоненты
+
+### 1. Сеть — Tailscale
+Приватный tailnet; обращение по **MagicDNS-имени**, не по IP (IP плавает → раньше роняло связь). Наружу ничего не торчит.
+
+### 2. agent-bus — связь между агентами
+Общий Redis как шина. Каждый агент:
+- **MCP-сервер** (`mcp/agent-bus.js`) — presence (`agents:presence:<id>`, TTL) + тулзы `who/send/broadcast/inbox`.
+- **pm2-персистер** (`agent-bus.persist.js`) — `BLPOP` inbox → durable-лог `~/.agent-bus/<id>.log` (переживает рестарты сессии, ничего не теряется офлайн).
+- **tail-watcher** в живой сессии — `tail -F` лога → real-time входящие прямо в контекст.
+- **Подпись Ed25519** — send/broadcast подписываются приватным ключом; получатель проверяет по реестру `mcp/agent-keys.json`. Приём помечается `✓` / `⚠ UNVERIFIED`. `bus-send.js` — подписанная отправка без MCP.
+
+**Почему durable+подпись:** `from` в JSON self-asserted, пароль Redis общий → без подписи любой форжит отправителя; персистер вне сессии → приём не зависит от жизни Claude-сессии.
+
+### 3. RAG-архив — общая семантическая память
+Хостится **только на linux** (`rag/server.js`, HTTP :8077, Bearer-токен, bind только tailscale). Стор — `sqlite-vec` (cosine); эмбеддинги — **локальный ollama** `nomic-embed-text` (наружу ничего). Клиенты (mac/win) — тонкий MCP (`rag/mcp.js`) + прямой `POST /ingest|/search|/delete`.
+- **Скоупы:** `work` (доки), `personal` (заметки), `agent` (итоги сессий), `trading` (локально на linux).
+- **Фильтр приватного:** секреты/ключи/сид-фразы не индексируются (skip).
+- **Forward-capture:** Stop-хук кладёт haiku-итог каждой сессии (scope=agent, 1 запись/сессия) → recall «я же это решал».
+- **Ре-синк:** `resync.sh` (снести source + залить) под weekly launchd — чтобы снапшоты доков не тухли.
+
+### 4. TG completion-пинги
+Stop-хук (`tools/claude-stop-notify.sh`) шлёт единый формат: `🤖 АГЕНТ · Claude · <machine> · 🟢 готово / 🗂 тема / 📝 результат`. Контент — авто-haiku из транскрипта; тот же итог реюзится в forward-capture.
+
+### 5. LLM-воркеры (базовый флот, опц.)
+BullMQ tier-очереди (`llm:strong/fast/embed`) + Ollama-воркеры на GPU-машинах; балансировка pull'ом. Для распараллеленных LLM-задач.
+
+### 6. Память / знания (files vs RAG)
+- **Ядро — файлами** (грузится/читается точно): `~/.claude/CLAUDE.md`, memory, control_plane оперативный слой (README-борд, роутеры, активные tasks).
+- **Recall — RAG:** доки-снапшоты (scope=work) + итоги сессий (scope=agent). Fuzzy — для «найти/вспомнить», не для правил.
+
+## Модель безопасности (границы доверия)
+- **Секреты — только локально** (Keychain/`~/.rag/rag.env`), **НИКОГДА по шине** (inbox durable-логируется → утечка). Не запрашивать/не присылать.
+- **Подпись отправителя** — доверяем только `✓`; `⚠ UNVERIFIED` **не триггерит действия-последствия**.
+- **Async-протокол задач:** безопасное/read-only → делай сам; не-рисковая развилка → спроси **по шине**; **рисковое** (чужой код/секреты/деплой/необратимое) → **defer + прямой ОК владельца** (не хэнг, не авто-да).
+- **Автономность ≠ авто-апрув.** Human-in-the-loop на рисковом сохраняется — **граница держится даже против доверенного диспетчера** (проверено сегодня: спуфинг from, чужой хук, bootstrap-парадокс апрува подписи).
+- **Trust-anchor реестра ключей** — владелец ревьюит добавления pubkey в `agent-keys.json`.
+
+## Узлы
+| id | машина | роль | что крутит |
+|---|---|---|---|
+| **mac-artyom** | macbook | диспетчер | agent-bus MCP+persister+watcher, RAG-клиент, TG, control_plane, weekly resync |
+| **linux-prestige** | artyom-prestige-14evo-b13m | координатор + данные + трейдинг | Redis, RAG-сервис+ollama, agent-bus, TG |
+| win-prestige | — | планируется | подключение по ONBOARDING |
+
+## Репозиторий
+`manmorc/llm-fleet@develop` — `mcp/` (agent-bus, keys, keygen, bus-send, agent-keys.json) · `rag/` (server, lib, mcp, ingest/resync, README) · `tools/` (TG-хук) · README/ONBOARDING/ARCHITECTURE.
