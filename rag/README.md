@@ -14,7 +14,9 @@ mac/win Claude ──(MCP archive_search/ingest)──▶ HTTP RAG-сервис 
 - `server.js` — HTTP-сервис (на linux): `GET /health`, `POST /search`, `POST /ingest`, `POST /delete` (by source/scope — чистки). Авторизация `Bearer RAG_TOKEN`.
 - `mcp.js` — тонкий MCP-клиент (на каждой машине): тулзы `archive_search`, `archive_ingest` → HTTP.
 - `ingest-files.js` — залить папку md/txt в архив (с любой машины).
+- `resync.sh` — ре-синк снапшота (`<scope> <dir> <source>`: снести source → залить заново; для доков, чтобы удалённое не тухло; на mac под weekly launchd).
 - `selftest.js` — проверка пайплайна без ollama (`RAG_FAKE_EMBED=1`).
+- **Forward-capture:** Stop-хук (`tools/claude-stop-notify.sh`) кладёт итог каждой сессии в RAG (scope=`agent`, одна запись/сессия) — recall прошлых сессий через `archive_search scope=agent`.
 
 ## Деплой сервера (на linux home-server)
 ```bash
