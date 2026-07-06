@@ -94,7 +94,18 @@ function openDb() {
       text TEXT, hash TEXT UNIQUE, ts INTEGER
     );
     CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(embedding float[${EMBED_DIM}] distance_metric=cosine);
+    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
   `);
+  // Guard: vec0 создаётся через IF NOT EXISTS → на СТАРОЙ БД смена метрики/размерности тихо не применится.
+  // Пишем маркер конфига; при рассинхроне на непустой БД — громкое предупреждение (нужен reindex).
+  const want = `cosine:${EMBED_DIM}`;
+  const got = db.prepare(`SELECT value FROM meta WHERE key='vec_config'`).get();
+  const n = db.prepare(`SELECT count(*) c FROM vec_chunks`).get().c;
+  if (got && got.value !== want && n > 0) {
+    process.stderr.write(`[rag] ⚠ vec_chunks собран как ${got.value}, а конфиг = ${want}. IF NOT EXISTS НЕ пересоздаёт таблицу — метрика/размерность НЕ совпадут. Реиндексируй: снеси ${DB_PATH}* или DROP vec_chunks.\n`);
+  } else if (!got || n === 0) {
+    db.prepare(`INSERT OR REPLACE INTO meta(key,value) VALUES('vec_config',?)`).run(want);
+  }
   return db;
 }
 function toBlob(vec) { return Buffer.from(new Float32Array(vec).buffer); }
