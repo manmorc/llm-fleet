@@ -12,6 +12,7 @@
 // ENV: REDIS_URL (обяз.) · AGENT_ID (по умолчанию hostname) · AGENT_LABEL (опис., опц.)
 const os = require('os');
 const IORedis = require('ioredis');
+const keys = require('./keys'); // Ed25519 подпись/проверка отправителя
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const AGENT_ID = (process.env.AGENT_ID || os.hostname()).trim();
@@ -76,13 +77,15 @@ async function callTool(name, args) {
   if (name === 'send') {
     if (!args.to || !args.text) throw new Error('нужны to и text');
     const rec = { from: AGENT_ID, to: args.to, text: String(args.text), kind: 'direct', ts: Date.now() };
+    rec.sig = keys.sign(rec); // подпись отправителя (canon = from|ts|text)
     await deliver(args.to, rec);
-    return `Отправлено → ${args.to}: "${rec.text}"`;
+    return `Отправлено → ${args.to}: "${rec.text}"${rec.sig ? '' : ' [⚠ без подписи — нет приватного ключа]'}`;
   }
   if (name === 'broadcast') {
     if (!args.text) throw new Error('нужен text');
     const list = (await online()).filter(a => a.id !== AGENT_ID);
     const rec = { from: AGENT_ID, text: String(args.text), kind: 'broadcast', ts: Date.now() };
+    rec.sig = keys.sign(rec); // canon не включает to → одна подпись валидна для всех получателей
     for (const a of list) await deliver(a.id, { ...rec, to: a.id });
     return `Broadcast → ${list.length} агент(ов): ${list.map(a => a.id).join(', ') || '(никого)'} : "${rec.text}"`;
   }
@@ -92,8 +95,9 @@ async function callTool(name, args) {
     if (!args.peek) await redis.del(k);
     if (!raw.length) return '(пусто) — новых сообщений нет';
     const msgs = raw.map(s => { try { return JSON.parse(s); } catch { return { text: s }; } });
+    const mark = (m) => { const v = keys.verify(m); return v === 'ok' ? '✓' : `⚠${v}`; };
     return `Входящих: ${msgs.length}\n` + msgs.map((m, i) =>
-      `  ${i + 1}. [${new Date(m.ts).toLocaleTimeString()}] ${m.from}${m.kind === 'broadcast' ? ' (broadcast)' : ''}: ${m.text}`).join('\n');
+      `  ${i + 1}. ${mark(m)} [${new Date(m.ts).toLocaleTimeString()}] ${m.from}${m.kind === 'broadcast' ? ' (broadcast)' : ''}: ${m.text}`).join('\n');
   }
   throw new Error('неизвестный инструмент: ' + name);
 }

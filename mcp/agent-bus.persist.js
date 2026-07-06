@@ -6,6 +6,7 @@
 // ENV: REDIS_URL (обяз.) · AGENT_ID (по умолч. hostname) · AGENT_BUS_LOG (по умолч. ~/.agent-bus/<id>.log)
 const os = require('os'), fs = require('fs'), path = require('path');
 const IORedis = require('ioredis');
+const keys = require('./keys'); // проверка подписи отправителя
 
 const URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const ID = (process.env.AGENT_ID || os.hostname()).trim();
@@ -26,7 +27,8 @@ emit(`▶ persist up — ${KEY} → ${LOG}`);
       if (!res) continue;
       let m; try { m = JSON.parse(res[1]); } catch (_) { m = { text: res[1] }; }
       const tag = m.kind === 'broadcast' ? ' (broadcast)' : '';
-      emit(`📨 ${new Date().toISOString()} ${m.from || '?'}${tag}: ${m.text || ''}`);
+      const v = keys.verify(m); const mark = v === 'ok' ? '✓' : `⚠ UNVERIFIED(${v})`;
+      emit(`📨 ${mark} ${new Date().toISOString()} ${m.from || '?'}${tag}: ${m.text || ''}`);
     } catch (e) {
       process.stderr.write('[persist] ' + e.message + '\n');
       await new Promise((r) => setTimeout(r, 2000));
