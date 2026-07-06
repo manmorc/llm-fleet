@@ -144,4 +144,17 @@ async function search(db, query, { scope, k = 6 } = {}) {
   return rows.map((r) => ({ score: +(1 - r.distance).toFixed(3), scope: r.scope, source: r.source, path: r.path, title: r.title, text: r.text }));
 }
 
-module.exports = { EMBED_DIM, DB_PATH, openDb, ingest, search, embed, chunk, sanitize, scanSecret, sha };
+// Удаление по source и/или scope (для чисток, напр. неподтверждённый провенанс). Требует хотя бы один фильтр.
+function del(db, { source, scope } = {}) {
+  const where = [], args = [];
+  if (source) { where.push('source = ?'); args.push(source); }
+  if (scope) { where.push('scope = ?'); args.push(scope); }
+  if (!where.length) throw new Error('нужен source и/или scope (пустой фильтр запрещён)');
+  const ids = db.prepare(`SELECT id FROM chunks WHERE ${where.join(' AND ')}`).all(...args).map((r) => r.id);
+  const delV = db.prepare('DELETE FROM vec_chunks WHERE rowid = ?');
+  const delC = db.prepare('DELETE FROM chunks WHERE id = ?');
+  db.transaction((list) => { for (const id of list) { delV.run(BigInt(id)); delC.run(id); } })(ids);
+  return { deleted: ids.length };
+}
+
+module.exports = { EMBED_DIM, DB_PATH, openDb, ingest, search, del, embed, chunk, sanitize, scanSecret, sha };

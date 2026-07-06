@@ -11,7 +11,7 @@ mac/win Claude ──(MCP archive_search/ingest)──▶ HTTP RAG-сервис 
 
 ## Компоненты
 - `lib.js` — ядро: sqlite-vec store, ollama-эмбеддинги, чанкер, **фильтр приватного** (секреты/токены/ключи/сид-фразы НЕ индексируются).
-- `server.js` — HTTP-сервис (на linux): `GET /health`, `POST /search`, `POST /ingest`. Авторизация `Bearer RAG_TOKEN`.
+- `server.js` — HTTP-сервис (на linux): `GET /health`, `POST /search`, `POST /ingest`, `POST /delete` (by source/scope — чистки). Авторизация `Bearer RAG_TOKEN`.
 - `mcp.js` — тонкий MCP-клиент (на каждой машине): тулзы `archive_search`, `archive_ingest` → HTTP.
 - `ingest-files.js` — залить папку md/txt в архив (с любой машины).
 - `selftest.js` — проверка пайплайна без ollama (`RAG_FAKE_EMBED=1`).

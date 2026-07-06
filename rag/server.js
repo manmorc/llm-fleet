@@ -3,7 +3,7 @@
 // Эндпоинты: GET /health · POST /search {query,scope?,k?} · POST /ingest {items:[{scope,source,path,title,text,ts}]}
 // Авторизация: Bearer RAG_TOKEN (шина/сеть → токен обязателен). ENV: RAG_TOKEN, RAG_PORT(8077), RAG_DB, OLLAMA_URL.
 const http = require('http');
-const { openDb, ingest, search } = require('./lib');
+const { openDb, ingest, search, del } = require('./lib');
 
 const PORT = parseInt(process.env.RAG_PORT || '8077', 10);
 // Хардинг: bind по умолчанию localhost; для кросс-машинного — RAG_BIND=<tailscale-IP> (НЕ 0.0.0.0,
@@ -31,6 +31,11 @@ const server = http.createServer(async (req, res) => {
       const { items } = await body(req);
       if (!Array.isArray(items) || !items.length) return send(res, 400, { error: 'items[] required' });
       return send(res, 200, await ingest(db, items));
+    }
+    if (req.method === 'POST' && req.url === '/delete') {
+      const { source, scope } = await body(req);
+      try { return send(res, 200, del(db, { source, scope })); }
+      catch (e) { return send(res, 400, { error: e.message }); }
     }
     send(res, 404, { error: 'not found' });
   } catch (e) { send(res, 500, { error: e.message }); }
