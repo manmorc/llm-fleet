@@ -6,7 +6,11 @@ const http = require('http');
 const { openDb, ingest, search } = require('./lib');
 
 const PORT = parseInt(process.env.RAG_PORT || '8077', 10);
+// Хардинг: bind по умолчанию localhost; для кросс-машинного — RAG_BIND=<tailscale-IP> (НЕ 0.0.0.0,
+// чтобы роуминг-ноут не торчал на LAN/публичном WiFi). Токен ОБЯЗАТЕЛЕН (fail-closed) — сервис не стартует без него.
+const BIND = process.env.RAG_BIND || '127.0.0.1';
 const TOKEN = process.env.RAG_TOKEN || '';
+if (!TOKEN) { console.error('FATAL: RAG_TOKEN обязателен (fail-closed). Задай RAG_TOKEN и перезапусти.'); process.exit(1); }
 const db = openDb();
 
 function body(req) {
@@ -31,4 +35,4 @@ const server = http.createServer(async (req, res) => {
     send(res, 404, { error: 'not found' });
   } catch (e) { send(res, 500, { error: e.message }); }
 });
-server.listen(PORT, '0.0.0.0', () => console.log(`rag-server on 0.0.0.0:${PORT} db=${require('./lib').DB_PATH} auth=${TOKEN ? 'on' : 'OFF'}`));
+server.listen(PORT, BIND, () => console.log(`rag-server on ${BIND}:${PORT} db=${require('./lib').DB_PATH} auth=on`));

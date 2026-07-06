@@ -22,10 +22,12 @@ cd llm-fleet && git pull origin develop
 cd rag && npm install                      # better-sqlite3 собирается (нужны build-tools)
 ollama pull nomic-embed-text               # локальная модель эмбеддингов (768d)
 TOK=$(openssl rand -hex 24)                # токен доступа; СОХРАНИ, вписывать локально на клиентах
-RAG_TOKEN="$TOK" RAG_PORT=8077 node server.js   # запускать под pm2/tmux (always-on)
-#   pm2 start server.js --name rag -- ; pm2 save   (env через RAG_TOKEN=... pm2 start ...)
+TS=$(tailscale ip -4 | head -1)            # bind ТОЛЬКО на tailscale-IP (не 0.0.0.0!)
+RAG_TOKEN="$TOK" RAG_BIND="$TS" RAG_PORT=8077 node server.js   # под pm2/tmux/systemd (always-on)
 ```
-Сервер слушает `0.0.0.0:8077` (Tailscale+LAN); наружу не торчит, защищён токеном.
+Хардинг: **bind по умолчанию `127.0.0.1`**; для кросс-машинного задай `RAG_BIND=<tailscale-IP>` — так роуминг-ноут
+**не торчит на LAN/публичном WiFi** (в отличие от `0.0.0.0`). **`RAG_TOKEN` обязателен — fail-closed** (без него сервис
+не стартует). Токен — единственная защита сетевого доступа.
 
 ## Подключение MCP (на каждой машине — mac/win/linux)
 Токен **НЕ передаём по шине** — владелец вписывает локально (Keychain/env). MagicDNS-имя linux вместо IP.

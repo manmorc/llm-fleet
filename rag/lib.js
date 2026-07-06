@@ -93,7 +93,7 @@ function openDb() {
       scope TEXT, source TEXT, path TEXT, title TEXT, ord INTEGER,
       text TEXT, hash TEXT UNIQUE, ts INTEGER
     );
-    CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(embedding float[${EMBED_DIM}]);
+    CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(embedding float[${EMBED_DIM}] distance_metric=cosine);
   `);
   return db;
 }

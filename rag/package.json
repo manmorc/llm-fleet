@@ -13,7 +13,7 @@
     "selftest": "node selftest.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.11.1",
     "sqlite-vec": "^0.1.6"
   }
 }
