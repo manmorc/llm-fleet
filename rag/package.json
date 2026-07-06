@@ -1,0 +1,19 @@
+{
+  "name": "gl-fleet-rag",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-machine personal/work RAG archive (sqlite-vec + local ollama embeddings). Store on always-on home server, queried via MCP over Tailscale.",
+  "bin": {
+    "rag-server": "server.js",
+    "rag-mcp": "mcp.js",
+    "rag-ingest-files": "ingest-files.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "selftest": "node selftest.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "sqlite-vec": "^0.1.6"
+  }
+}

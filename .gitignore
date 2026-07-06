@@ -6,3 +6,6 @@ npm-debug.log*
 
 # local MCP config (may contain secrets)
 .mcp.json
+rag/node_modules/
+rag/package-lock.json
+.rag/
