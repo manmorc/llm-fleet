@@ -98,3 +98,20 @@ curl -s -m 8 \
   -d "chat_id=$TG_CHAT" \
   --data-urlencode "text=$text" \
   "https://api.telegram.org/bot$TG_TOKEN/sendMessage" >/dev/null 2>&1 || true
+
+# --- forward-capture: итог сессии → RAG-архив (scope=agent), ОДНА запись/сессия (delete+ingest, последний итог) ---
+# Реюзит уже посчитанный haiku-итог (topic/result_clean) — без лишних LLM-вызовов, без сырья/секретов.
+# Токен: env RAG_TOKEN → Keychain rag-token (mac) → ~/.rag/rag.env (linux). Всё в `|| true` — не ломает пинг.
+if [ "$event" = "stop" ] && [ -n "${topic:-}" ]; then
+  RAG_URL="${RAG_URL:-http://artyom-prestige-14evo-b13m.tail241f5d.ts.net:8077}"
+  RTOK="${RAG_TOKEN:-$(security find-generic-password -s rag-token -w 2>/dev/null)}"
+  [ -z "$RTOK" ] && [ -f "$HOME/.rag/rag.env" ] && RTOK="$(grep -m1 '^RAG_TOKEN=' "$HOME/.rag/rag.env" | cut -d= -f2-)"
+  if [ -n "$RTOK" ]; then
+    src="session:${MACHINE}:${CLAUDE_CODE_SESSION_ID:-unknown}"
+    body="$(python3 -c "import json,sys;print(json.dumps({'items':[{'scope':'agent','source':sys.argv[1],'title':sys.argv[2],'text':sys.argv[2]+'. '+sys.argv[3]+' (сессия '+sys.argv[4]+')'}]}))" "$src" "$topic" "${result_clean:-}" "${transcript:-}" 2>/dev/null)"
+    if [ -n "$body" ]; then
+      curl -s -m 6 -X POST "$RAG_URL/delete" -H "authorization: Bearer $RTOK" -H 'content-type: application/json' -d "{\"source\":\"$src\"}" >/dev/null 2>&1 || true
+      curl -s -m 6 -X POST "$RAG_URL/ingest" -H "authorization: Bearer $RTOK" -H 'content-type: application/json' -d "$body" >/dev/null 2>&1 || true
+    fi
+  fi
+fi
