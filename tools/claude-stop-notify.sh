@@ -6,7 +6,6 @@
 #   🤖 АГЕНТ · Claude · <machine> · 🟢 готово     (или · 🔴 ошибка)
 #   🗂 <тема, ≤6 слов>
 #   📝 <результат, ≤6 слов>
-#   (completion-пинг)
 #
 # Установка: cp сюда → ~/.claude/hooks/notify.sh; впиши СВОИ TG_TOKEN/TG_CHAT локально (не коммить);
 # задай MACHINE (или env CLAUDE_MACHINE); повесь на Stop в ~/.claude/settings.json:
@@ -84,9 +83,8 @@ print(status); print(topic); print(result)
       text="🤖 АГЕНТ · Claude · ${MACHINE} · ${status}"
       [ -n "$topic" ] && text="${text}"$'\n'"🗂 ${topic}"
       [ -n "$result_clean" ] && text="${text}"$'\n'"📝 ${result_clean}"
-      text="${text}"$'\n'"(completion-пинг)"
     else
-      text="🤖 АГЕНТ · Claude · ${MACHINE} · 🟢 готово"$'\n'"(completion-пинг)"
+      text="🤖 АГЕНТ · Claude · ${MACHINE} · 🟢 готово"
     fi
     ;;
   *)
