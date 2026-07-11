@@ -41,6 +41,16 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
   const messages = [{ role: 'system', content: sys }, { role: 'user', content: factBlock + String(task) }];
   const trace = [];
   const emit = (e) => { trace.push(e); if (onEvent) onEvent(e); };
+  const seen = new Map(); // сигнатура вызова → счётчик (защита от зацикливания)
+
+  // выполнить тул с 1 retry на транзиентную ошибку (не на BLOCKED — это осознанный отказ надзора)
+  async function execWithRetry(name, args) {
+    try { return await tools.exec(name, args); }
+    catch (e) {
+      try { return await tools.exec(name, args); }
+      catch (e2) { return `ERROR: ${e2.message}`; }
+    }
+  }
 
   for (let step = 0; step < maxSteps; step++) {
     const msg = await chatTools(messages, { model });
@@ -53,17 +63,28 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
     for (const c of calls) {
       const name = c.function?.name;
       const args = c.function?.arguments || {};
+      const sig = name + ':' + JSON.stringify(args);
+      const n = (seen.get(sig) || 0) + 1;
+      seen.set(sig, n);
       emit({ type: 'call', step, name, args });
       let result;
-      try { result = await tools.exec(name, args); }
-      catch (e) { result = `ERROR: ${e.message}`; }
+      if (n > 2) {
+        // третий+ идентичный вызов — почти наверняка зацикливание; не жжём инференс, направляем модель
+        result = `ПОВТОР: этот вызов уже сделан ${n - 1} раз(а) с тем же результатом. НЕ повторяй — используй полученные данные и дай финальный ответ.`;
+      } else {
+        result = await execWithRetry(name, args);
+      }
       emit({ type: 'result', step, name, result: String(result).slice(0, 500) });
       // ollama принимает role:'tool'; имя тула кладём и в поле, и в контент (совместимость разных версий)
       messages.push({ role: 'tool', tool_name: name, content: `[${name}] ${result}` });
     }
   }
+  // Исчерпаны шаги — финальный вызов БЕЗ тулзов, чтобы модель дала ответ из собранного (а не заглушка)
   emit({ type: 'exhausted', steps: maxSteps });
-  return { answer: '(достигнут лимит шагов без финального ответа)', steps: maxSteps, trace };
+  messages.push({ role: 'user', content: 'Лимит инструментов исчерпан. Дай лучший финальный ответ на основе уже собранных данных, без вызова инструментов.' });
+  let finalMsg;
+  try { finalMsg = await chatTools(messages, { model }); } catch (_) { finalMsg = { content: '' }; }
+  return { answer: finalMsg.content || '(достигнут лимит шагов)', steps: maxSteps, trace };
 }
 
 module.exports = { runAgent, SYS };

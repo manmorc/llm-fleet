@@ -52,6 +52,27 @@ const REGISTRY = {
       return String(v);
     },
   },
+  grep_file: {
+    safe: true,
+    schema: { type: 'object', properties: { file: { type: 'string' }, needle: { type: 'string', description: 'Подстрока для поиска' } }, required: ['file', 'needle'] },
+    description: 'Найти строки в файле, содержащие подстроку (детерминированный поиск в контенте, без регистра). Используй ВМЕСТО чтения всего файла и ручного поиска.',
+    run: ({ file, needle }) => {
+      const lines = fs.readFileSync(safePath(file), 'utf8').split(/\r?\n/);
+      const hits = lines.map((l, i) => ({ l, i: i + 1 })).filter((x) => x.l.toLowerCase().includes(String(needle).toLowerCase()));
+      return hits.length ? clip(hits.map((h) => `${h.i}: ${h.l}`).join('\n')) : `(нет строк с "${needle}")`;
+    },
+  },
+  json_query: {
+    safe: true,
+    schema: { type: 'object', properties: { file: { type: 'string' }, path: { type: 'string', description: 'Путь к полю через точку, напр. "service" или "config.port" или "items.0"' } }, required: ['file', 'path'] },
+    description: 'Извлечь значение поля из JSON-файла точно по пути (dot-нотация, индексы массива числом). Используй ВМЕСТО чтения и ручного парсинга JSON.',
+    run: ({ file, path: p }) => {
+      let v = JSON.parse(fs.readFileSync(safePath(file), 'utf8'));
+      for (const key of String(p).split('.')) { if (v == null) break; v = v[key]; }
+      if (v === undefined) return `(поле "${p}" не найдено)`;
+      return typeof v === 'object' ? clip(JSON.stringify(v)) : String(v);
+    },
+  },
   http_get: {
     safe: true,
     schema: { type: 'object', properties: { url: { type: 'string', description: 'URL (только localhost или tailnet 100.x)' } }, required: ['url'] },
