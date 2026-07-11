@@ -40,12 +40,14 @@ const REGISTRY = {
   },
   calc: {
     safe: true,
-    schema: { type: 'object', properties: { expr: { type: 'string', description: 'Арифметическое выражение, напр. "10+25+5+60" или "100/4"' } }, required: ['expr'] },
-    description: 'Посчитать арифметику точно (+ - * / скобки). Используй ВМЕСТО устного счёта — модель ошибается в математике.',
+    schema: { type: 'object', properties: { expr: { type: 'string', description: 'Матвыражение: + - * / ^ (степень), скобки, функции exp() pow() sqrt() ln(), константа e. Напр. "(1+0.08/12)^12-1" или "exp(0.08)-1"' } }, required: ['expr'] },
+    description: 'Посчитать математику ТОЧНО (арифметика, степени, exp/pow/sqrt/ln). Используй ВМЕСТО устного счёта — модель ошибается в математике, особенно в степенях/процентах.',
     run: ({ expr }) => {
       const e = String(expr).trim();
-      if (!/^[\d\s+\-*/().]+$/.test(e)) throw new Error('только числа и + - * / ( )');
-      const v = Function(`"use strict";return (${e})`)();
+      const stripped = e.replace(/\b(exp|pow|sqrt|ln|e)\b/gi, '').trim();
+      if (!/^[\d\s+\-*/^().,]*$/.test(stripped)) throw new Error('только числа, + - * / ^, скобки и функции exp/pow/sqrt/ln/e');
+      const js = e.replace(/\^/g, '**').replace(/\bexp\b/gi, 'Math.exp').replace(/\bpow\b/gi, 'Math.pow').replace(/\bsqrt\b/gi, 'Math.sqrt').replace(/\bln\b/gi, 'Math.log').replace(/\be\b/gi, 'Math.E');
+      const v = Function(`"use strict";return (${js})`)();
       if (!Number.isFinite(v)) throw new Error('нечисловой результат');
       return String(v);
     },
