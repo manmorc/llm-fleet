@@ -18,6 +18,18 @@ function safePath(p) {
 }
 function clip(s) { s = String(s); return s.length > MAX_OUT ? s.slice(0, MAX_OUT) + `\n…[обрезано, всего ${s.length} симв.]` : s; }
 
+// Креды RAG — лениво из env или ~/.rag/rag.env (секрет локально, не дублируем). Present-but-inactive если нет.
+function ragConfig() {
+  let url = process.env.RAG_URL, token = process.env.RAG_TOKEN;
+  if (!url || !token) {
+    try {
+      const env = fs.readFileSync(path.join(require('os').homedir(), '.rag', 'rag.env'), 'utf8');
+      for (const line of env.split(/\r?\n/)) { const m = line.match(/^\s*(RAG_URL|RAG_TOKEN)\s*=\s*(.+?)\s*$/); if (m) { if (m[1] === 'RAG_URL') url = url || m[2]; else token = token || m[2]; } }
+    } catch (_) {}
+  }
+  return { url: (url || '').replace(/\/$/, ''), token };
+}
+
 const REGISTRY = {
   list_dir: {
     safe: true,
@@ -83,6 +95,24 @@ const REGISTRY = {
       if (!ok) throw new Error(`хост запрещён: ${u.hostname} (только localhost/tailnet)`);
       const res = await fetch(url);
       return clip(`[${res.status}] ` + (await res.text()));
+    },
+  },
+  rag_search: {
+    safe: true,
+    schema: { type: 'object', properties: { query: { type: 'string' }, scope: { type: 'string', description: 'work|personal|agent|trading|principles (опц.)' } }, required: ['query'] },
+    description: 'Найти релевантные ФАКТЫ в общем RAG-архиве флота (семантический поиск). Используй для знаниевых вопросов (доменные механики/специфика), которых можешь не знать — не выдумывай.',
+    run: async ({ query, scope }) => {
+      const cfg = ragConfig();
+      if (!cfg.url || !cfg.token) return 'RAG не настроен на этой ноде (нет ~/.rag/rag.env с RAG_URL/RAG_TOKEN). Факты недоступны — ответь по своим знаниям, честно пометив неуверенность.';
+      try {
+        const res = await fetch(`${cfg.url}/search`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
+          body: JSON.stringify({ query, scope, top_k: 5 }) });
+        if (!res.ok) return `RAG ${res.status} (поиск недоступен)`;
+        const j = await res.json();
+        const items = j.results || j.matches || j.hits || (Array.isArray(j) ? j : []);
+        if (!items.length) return '(RAG: релевантных фактов не найдено)';
+        return clip(items.map((it, i) => `[${i + 1}] ${it.text || it.content || it.chunk || JSON.stringify(it)}`).join('\n'));
+      } catch (e) { return `RAG ошибка: ${e.message}`; }
     },
   },
   // ── РИСКОВЫЕ (за флагом) ──────────────────────────────────────────────

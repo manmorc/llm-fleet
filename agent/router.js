@@ -59,7 +59,16 @@ async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8
   let needsFacts = false;
   if (cls === 'disposition') opts.skeptic = true;
   else if (cls === 'reasoning') effTask = String(task) + '\n\n(Рассуждай пошагово, разбери допущения, потом финальный вывод.)';
-  else if (cls === 'knowledge') { opts.skeptic = true; if (!facts) needsFacts = true; } // знание×диспозиция: факт+скептик
+  else if (cls === 'knowledge') {
+    opts.skeptic = true; // знание×диспозиция: факт+скептик
+    if (!facts) {
+      // авто-подтяжка факта из RAG (делает знаниевый фикс автономным). Если RAG не настроен — needsFacts=true.
+      const tools = require('./tools');
+      const rag = await tools.exec('rag_search', { query: String(task).slice(0, 300) }).catch(() => '');
+      if (rag && !/RAG не настроен|не найдено|RAG \d|RAG ошибка/.test(rag)) { opts.facts = rag; if (onEvent) onEvent({ type: 'rag', hit: true }); }
+      else needsFacts = true;
+    }
+  }
   const r = await runAgent(effTask, opts);
   return { ...r, class: cls, needsFacts, model };
 }
