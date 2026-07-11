@@ -18,6 +18,20 @@ Q: «Стоит ли гнаться за фандингом 300% на альтк
 Q: «Стратегия 80% win-rate на бэктесте — запускать в реал?» A: {"class":"disposition","why":"нужен скепсис к заманчивой цифре, риск overfit"}
 Q: «Извлеки поле port из config.json» A: {"class":"structure","why":"извлечение поля из данных"}`;
 
+// Признак, что задача требует данных/тулзов (файлы, папки) — тогда r1 (без tool-calls) не годится.
+function needsTools(task) { return /\.(txt|json|md|csv|log)\b|\bфайл|\bпапк|\bдиректор|рабоч.{0,6}папк/i.test(String(task)); }
+
+// Чистое рассуждение reasoning-моделью (r1) БЕЗ тулзов (r1 не делает нативных tool_calls, но силён в логике).
+const REASON_MODEL = process.env.REASON_MODEL || 'deepseek-r1:14b';
+async function reason(task, { model = REASON_MODEL } = {}) {
+  try {
+    const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: String(task) + '\n\nРассуждай пошагово, разбери допущения и подводные камни, затем дай чёткий финальный вывод.' }], stream: false, options: { temperature: 0.2 } }) });
+    const j = await res.json();
+    return (j.message?.content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  } catch (e) { return null; }
+}
+
 async function classify(task, { model = 'gemma4:latest' } = {}) {
   try {
     const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -34,6 +48,12 @@ async function classify(task, { model = 'gemma4:latest' } = {}) {
 async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8, onEvent } = {}) {
   const cls = await classify(task, { model });
   if (onEvent) onEvent({ type: 'class', class: cls });
+  // Model-routing: reasoning без нужды в данных → r1 pure-reasoning (сильнее на логике, доказано).
+  if (cls === 'reasoning' && !needsTools(task) && !facts) {
+    const ans = await reason(task);
+    if (ans) { if (onEvent) onEvent({ type: 'route', model: REASON_MODEL, mode: 'pure-reason' }); return { answer: ans, steps: 1, trace: [], class: cls, needsFacts: false, model: REASON_MODEL }; }
+    // r1 недоступен → fallback на gemma+CoT ниже
+  }
   const opts = { model, maxSteps, onEvent, facts };
   let effTask = task;
   let needsFacts = false;
@@ -41,7 +61,7 @@ async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8
   else if (cls === 'reasoning') effTask = String(task) + '\n\n(Рассуждай пошагово, разбери допущения, потом финальный вывод.)';
   else if (cls === 'knowledge') { opts.skeptic = true; if (!facts) needsFacts = true; } // знание×диспозиция: факт+скептик
   const r = await runAgent(effTask, opts);
-  return { ...r, class: cls, needsFacts };
+  return { ...r, class: cls, needsFacts, model };
 }
 
 module.exports = { classify, runAgentAuto };
