@@ -73,3 +73,11 @@ cp tools/claude-stop-notify.sh ~/.claude/hooks/notify.sh    # впиши СВО�
 tailscale ping artyom-prestige-14evo-b13m.tail241f5d.ts.net   # сеть
 # в Claude: who → видит других агентов; send себе → в inbox/логе ✓
 ```
+
+## 8. FLEET-SYNC — синхронизация изменений (обязательно, решение владельца 2026-07-11)
+Рассинхрон опасен: нода может не знать о новых коммитах и задублировать/сломать готовую работу
+(реальный кейс: linux-prestige отставал на 10 коммитов develop — join-server/keys/ONBOARDING уже были).
+- **Запушил в llm-fleet** (особенно agent-bus / mcp / keys / shared-инфра) → **СРАЗУ** broadcast всем:
+  `[FLEET-SYNC] запушил в develop: <что>. git pull.`
+- **Получил `[FLEET-SYNC]` ИЛИ старт новой сессии** → первым делом `git -C <llm-fleet> fetch && git status`;
+  если behind — `git pull --rebase`. **Перед правкой shared-инфры — fetch+pull ДО изменений.**
