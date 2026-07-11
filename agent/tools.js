@@ -32,6 +32,24 @@ const REGISTRY = {
     description: 'Прочитать текстовый файл (в пределах AGENT_ROOT).',
     run: ({ file }) => clip(fs.readFileSync(safePath(file), 'utf8')),
   },
+  count_lines: {
+    safe: true,
+    schema: { type: 'object', properties: { file: { type: 'string', description: 'Путь к файлу относительно AGENT_ROOT' } }, required: ['file'] },
+    description: 'Точное число строк в файле (детерминированно). Используй ВМЕСТО ручного подсчёта — модель считает ненадёжно.',
+    run: ({ file }) => { const c = fs.readFileSync(safePath(file), 'utf8'); if (!c.length) return '0'; return String(c.replace(/\r?\n$/, '').split(/\r?\n/).length); },
+  },
+  calc: {
+    safe: true,
+    schema: { type: 'object', properties: { expr: { type: 'string', description: 'Арифметическое выражение, напр. "10+25+5+60" или "100/4"' } }, required: ['expr'] },
+    description: 'Посчитать арифметику точно (+ - * / скобки). Используй ВМЕСТО устного счёта — модель ошибается в математике.',
+    run: ({ expr }) => {
+      const e = String(expr).trim();
+      if (!/^[\d\s+\-*/().]+$/.test(e)) throw new Error('только числа и + - * / ( )');
+      const v = Function(`"use strict";return (${e})`)();
+      if (!Number.isFinite(v)) throw new Error('нечисловой результат');
+      return String(v);
+    },
+  },
   http_get: {
     safe: true,
     schema: { type: 'object', properties: { url: { type: 'string', description: 'URL (только localhost или tailnet 100.x)' } }, required: ['url'] },
