@@ -58,7 +58,10 @@ async function handle(m) {
       const res = await br.blpop(INBOX + ID, 5);
       if (!res) continue;
       let m; try { m = JSON.parse(res[1]); } catch (_) { m = { text: res[1] }; }
-      if (m.kind === 'approval-request' || m.kind === 'approval') continue; // не задачи
+      // Реагируем ТОЛЬКО на прямые задачи. Игнор: свои сообщения, broadcast (FLEET-SYNC и пр.),
+      // служебные (approval-*), и любые не-direct. Иначе агент жжёт инференс на служебном трафике.
+      if (m.from === ID) continue;
+      if (m.kind && m.kind !== 'direct') continue;
       await handle(m);
     } catch (e) { log('loop err', e.message); await new Promise((x) => setTimeout(x, 2000)); }
   }
