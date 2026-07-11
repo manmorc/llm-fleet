@@ -7,7 +7,7 @@
 const os = require('os');
 const IORedis = require('ioredis');
 const keys = require('../mcp/keys');
-const { runAgent } = require('./loop');
+const { runAgentAuto } = require('./router'); // само-управляемый judgment-mode (классификация+каркас+routing)
 
 const URL = process.env.REDIS_URL;
 const ID = (process.env.AGENT_ID || 'desktop-local').trim();
@@ -37,12 +37,16 @@ async function handle(m) {
   // Подпись верифицирует КТО прислал; надзор (supervisor) гейтит ЧТО рисковое выполнится. Оба слоя.
   await reply(from, `🟢 desktop-local принял задачу (модель ${MODEL}, надзор=${process.env.AGENT_SUPERVISOR || 'deny'}), работаю…`);
   try {
-    const res = await runAgent(task, { model: MODEL, onEvent: (e) => {
-      if (e.type === 'call') log(`  → ${e.name}(${JSON.stringify(e.args).slice(0, 120)})`);
+    const res = await runAgentAuto(task, { model: MODEL, onEvent: (e) => {
+      if (e.type === 'class') log(`  [класс: ${e.class}]`);
+      else if (e.type === 'route') log(`  [routing → ${e.model}]`);
+      else if (e.type === 'rag') log(`  [rag: факт подтянут]`);
+      else if (e.type === 'call') log(`  → ${e.name}(${JSON.stringify(e.args).slice(0, 120)})`);
       else if (e.type === 'result') log(`  ← ${String(e.result).replace(/\n/g, ' ').slice(0, 120)}`);
     } });
-    await reply(from, `✅ desktop-local готово (${res.steps} шаг):\n${res.answer}`);
-    log(`✔ done → ${from} (${res.steps} шаг)`);
+    const tag = `[${res.class}${res.model && /r1|deepseek/i.test(res.model) ? '·r1' : ''}${res.needsFacts ? '·нужен-RAG-факт' : ''}]`;
+    await reply(from, `✅ desktop-local готово ${tag} (${res.steps} шаг):\n${res.answer}`);
+    log(`✔ done → ${from} ${tag} (${res.steps} шаг)`);
   } catch (e) {
     await reply(from, `⚠ desktop-local ошибка: ${e.message}`);
     log('✖ ERR', e.message);
