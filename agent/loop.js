@@ -26,9 +26,19 @@ async function chatTools(messages, { model, temperature = 0.2 } = {}) {
   return j.message || { role: 'assistant', content: '' };
 }
 
-// Выполнить задачу. Возвращает { answer, steps, trace[] }. trace — для отладки/аудита (§7 честность).
-async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent } = {}) {
-  const messages = [{ role: 'system', content: SYS }, { role: 'user', content: String(task) }];
+// Скептик-каркас для диспозиции/знаниевого суждения (доказано бенчмарком: факт+скептик флипает
+// даже упрямые модели, см. BENCHMARK/эксперимент). Применять когда задача — домен-судейская.
+const SKEPTIC = `\nУСТАНОВКА (суждение): будь СКЕПТИЧЕН к заголовочным цифрам и «слишком хорошим» показателям.
+Если известные факты указывают, что высокая цифра — ловушка, а инструмент/стратегия непригодны — прямо
+РЕКОМЕНДУЙ ИЗБЕГАТЬ, не оптимизируй вокруг неё. Высокий заголовочный показатель ≠ реальный результат.`;
+
+// Выполнить задачу. opts.facts (строка/массив) — инжект фактов из RAG (знаниевое суждение).
+// opts.skeptic — включить скептик-каркас (диспозиция). Вместе = judgment-mode (проверенный причинно).
+// Возвращает { answer, steps, trace[] }. trace — для отладки/аудита (§7 честность).
+async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, facts, skeptic } = {}) {
+  const sys = SYS + (skeptic ? SKEPTIC : '');
+  const factBlock = facts ? `ИЗВЕСТНЫЕ ФАКТЫ (учитывай их при ответе):\n${Array.isArray(facts) ? facts.map((f, i) => `[${i + 1}] ${f}`).join('\n') : facts}\n\nЗАДАЧА: ` : '';
+  const messages = [{ role: 'system', content: sys }, { role: 'user', content: factBlock + String(task) }];
   const trace = [];
   const emit = (e) => { trace.push(e); if (onEvent) onEvent(e); };
 
