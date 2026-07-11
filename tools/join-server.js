@@ -14,8 +14,10 @@ const REDIS_URL   = process.env.JOIN_REDIS_URL || process.env.REDIS_URL;
 const MODEL       = process.env.JOIN_MODEL || process.env.MODEL || '';   // пусто → install.* сам подберёт по железу
 const TIER        = process.env.JOIN_TIER || process.env.TIER || '';     // пусто → install.* выведет тир из MODEL/лестницы
 const OLLAMA_URL  = process.env.JOIN_OLLAMA_URL || 'http://127.0.0.1:11434';
-const INSTALL     = process.env.JOIN_INSTALL_URL || 'https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.sh';
-const INSTALL_PS1 = process.env.JOIN_INSTALL_PS1_URL || 'https://raw.githubusercontent.com/manmorc/llm-fleet/main/install.ps1';
+// Онбординг флота — develop-based (см. ONBOARDING §2: clone -b develop). install.ps1 есть только на develop;
+// install.sh на develop свежее (MODEL_LADDER). Референс — develop для консистентности one-liner ⇄ ручного онбординга.
+const INSTALL     = process.env.JOIN_INSTALL_URL || 'https://raw.githubusercontent.com/manmorc/llm-fleet/develop/install.sh';
+const INSTALL_PS1 = process.env.JOIN_INSTALL_PS1_URL || 'https://raw.githubusercontent.com/manmorc/llm-fleet/develop/install.ps1';
 const HOST = process.env.JOIN_HOST || '0.0.0.0';     // ставь Tailscale-IP, чтобы не торчать наружу
 const PORT = parseInt(process.env.JOIN_PORT || '8088', 10);
 

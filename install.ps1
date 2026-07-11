@@ -120,7 +120,7 @@ if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
 if (Test-Path (Join-Path $Dir '.git')) {
   Write-Host "> обновляю репо"; git -C $Dir pull --ff-only
 } else {
-  Write-Host "> клонирую"; git clone $Repo $Dir
+  Write-Host "> клонирую"; git clone -b develop $Repo $Dir
 }
 Set-Location $Dir
 Write-Host "> npm install"; npm install --omit=dev

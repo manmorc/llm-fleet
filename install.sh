@@ -108,7 +108,7 @@ command -v git   >/dev/null || { echo "✗ нужен git"; exit 1; }
 command -v ollama>/dev/null || { echo "▶ ставлю Ollama"; curl -fsSL https://ollama.com/install.sh | sh; }
 command -v pm2   >/dev/null || { echo "▶ ставлю pm2"; npm install -g pm2; }
 
-if [ -d "$DIR/.git" ]; then echo "▶ обновляю репо"; git -C "$DIR" pull --ff-only; else echo "▶ клонирую"; git clone "$REPO" "$DIR"; fi
+if [ -d "$DIR/.git" ]; then echo "▶ обновляю репо"; git -C "$DIR" pull --ff-only; else echo "▶ клонирую"; git clone -b develop "$REPO" "$DIR"; fi
 cd "$DIR"
 echo "▶ npm install"; npm install --omit=dev
 
