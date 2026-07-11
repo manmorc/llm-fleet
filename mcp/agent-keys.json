@@ -2,5 +2,6 @@
   "//": "Реестр ПУБЛИЧНЫХ Ed25519-ключей агентов (base64 SPKI DER). Публичные ключи — не секрет, коммитим. Trust-anchor: владелец ревьюит добавления. Каждый агент генерит свой (mcp/keygen.js), присылает публичный, добавляем сюда. Приватные ключи — ЛОКАЛЬНО у каждого (~/.agent-bus/agent.key), НИКОГДА не коммитим/не шлём.",
   "mac-artyom": "MCowBQYDK2VwAyEAMslwIlFVrNO1SY4UEaEjhgmK4Dnibpxq6iDJzWSyOM4=",
   "linux-prestige": "MCowBQYDK2VwAyEAQRDoCAzsTBp6WRp1ZVDsTFdeSjDrofH0syNoa1dG1YI=",
-  "desktop-tt4i69c": "MCowBQYDK2VwAyEAiaU0vi5eahIHhS0LgJmLHAjE6NZnXJM+uo/kPXWJJwA="
+  "desktop-tt4i69c": "MCowBQYDK2VwAyEAiaU0vi5eahIHhS0LgJmLHAjE6NZnXJM+uo/kPXWJJwA=",
+  "desktop-local": "MCowBQYDK2VwAyEAEMCewZhiWboj1XkMu2dcIAMlKxgdSD7Y8wB/pSCEaUM="
 }
