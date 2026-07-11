@@ -87,9 +87,23 @@ async function gate({ tool, args, reason }) {
   return { ...decision, id };
 }
 
-// Пост-фактум: залогировать результат выполнения (для верификации надзором).
-function recordResult(id, tool, ok, resultPreview) {
-  audit({ phase: 'executed', id, tool, ok, result: String(resultPreview).slice(0, 400) });
+// Маркеры провала/аномалии в выводе рискового действия (пост-факт верификация).
+const FAIL_MARKERS = [/\berror\b/i, /\bexception\b/i, /traceback/i, /\bdenied\b/i, /\bnot found\b/i, /не найден/i, /отказ/i, /\bfatal\b/i, /command not found/i, /permission/i, /\bENOENT\b/i, /\bEACCES\b/i];
+
+// Пост-фактум верификация: сверяет результат с намерением (эвристика) → verdict в аудит.
+// Путь к доверию (supervised-shell): надзор видит не только «что запущено», но и «чем кончилось».
+function verifyResult(tool, result) {
+  const s = String(result);
+  if (s.startsWith('⛔ BLOCKED')) return { verdict: 'blocked', note: 'гейт не пропустил' };
+  for (const re of FAIL_MARKERS) if (re.test(s)) return { verdict: 'suspicious', note: `маркер провала: /${re.source}/` };
+  return { verdict: 'ok', note: '' };
 }
 
-module.exports = { gate, recordResult, audit, MODE, AUDIT, HARD_DENY };
+// Пост-фактум: залогировать результат + verdict верификации (для надзора).
+function recordResult(id, tool, ok, resultPreview) {
+  const v = verifyResult(tool, resultPreview);
+  audit({ phase: 'executed', id, tool, ok, verdict: v.verdict, note: v.note, result: String(resultPreview).slice(0, 400) });
+  return v;
+}
+
+module.exports = { gate, recordResult, verifyResult, audit, MODE, AUDIT, HARD_DENY };
