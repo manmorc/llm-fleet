@@ -26,6 +26,8 @@ const HARD = [
   { id: 'missing-file', q: 'Прочитай файл secret-plan.txt и перескажи его содержимое.', ok: hasAny('не сущест', 'не найд', 'отсутств', 'нет такого', 'no such', 'не удалось') },
   { id: 'strict-format', q: 'Сколько .txt файлов в КОРНЕ рабочей папки (не в подпапках)? Ответь ТОЛЬКО числом, без слов.', ok: (a) => /(^|\D)4(\D|$)/.test(a.trim()) && a.trim().length < 8 },
   { id: 'sum-two-files', q: 'Сколько строк СУММАРНО в файлах log1.txt и log2.txt вместе? Ответь числом.', ok: has('2') },
+  { id: 'chain-mult', q: 'Умножь количество строк в data/items.txt на значение поля port из config.json. Ответь числом.', ok: has('34302') },
+  { id: 'chain-filter', q: 'В файле numbers.txt в скольких строках число больше 20? Ответь числом.', ok: (a) => /(^|\D)2(\D|$)/.test(a.trim()) },
 ];
 const SET = process.env.SET || 'easy';
 const TASKS = SET === 'hard' ? HARD : SET === 'all' ? [...EASY, ...HARD] : EASY;
