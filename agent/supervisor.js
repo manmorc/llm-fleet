@@ -16,11 +16,16 @@ const SUPERVISOR_ID = process.env.AGENT_SUPERVISOR_ID || 'desktop-tt4i69c'; // �
 const TIMEOUT_MS = parseInt(process.env.AGENT_APPROVAL_TIMEOUT || '120000', 10);
 
 // Заведомо-деструктивные паттерны — блок безусловно (детектор самоповреждения/эксфильтрации).
+// Списки sensitive/autorun заимствованы из Personal_Assistant (file_safety.py) — усилен детект.
 const HARD_DENY = [
   /\brm\s+-[rf]/i, /\bformat\b/i, /\bdel\s+\/[sqf]/i, /rmdir\s+\/s/i, /Remove-Item[^\n]*-Recurse/i,
   /\bshutdown\b/i, /\brestart-computer\b/i, /\breg\s+(add|delete)\b/i, /\bnetsh\b/i, /\bmkfs\b/i,
   /\bdd\s+if=/i, /\|\s*(sh|bash|iex|Invoke-Expression)/i, /Invoke-Expression/i, /\bcurl\b[^\n]*\|/i,
   /\bschtasks\b/i, /New-ScheduledTask/i, /\bnet\s+user\b/i, /\bicacls\b/i, /-EncodedCommand/i,
+  // эксфильтрация секретов через shell (чтение чувствительных путей):
+  /(cat|type|more|less|Get-Content|\bgc\b|copy|cp|scp|curl|Invoke-WebRequest)\b[^\n]*(\.ssh|\.aws|\.env\b|\.env\.|id_rsa|id_ed25519|credentials|\.pem\b|\.key\b|\.p12\b|\.pfx\b|agent\.key|rag\.env)/i,
+  // запись/модификация autorun-файлов (имплицитное исполнение = вектор персистентности/инъекции):
+  /(>|>>|Out-File|Set-Content|Add-Content|echo[^\n]*>)[^\n]*(\.bashrc|\.zshrc|\.profile|\.bash_profile|\.zprofile|profile\.ps1|sitecustomize|conftest\.py|\.git[\/\\]hooks|autostart|startup)/i,
 ];
 
 fs.mkdirSync(path.dirname(AUDIT), { recursive: true });
