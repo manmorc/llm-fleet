@@ -106,7 +106,7 @@ const REGISTRY = {
       if (!cfg.url || !cfg.token) return 'RAG не настроен на этой ноде (нет ~/.rag/rag.env с RAG_URL/RAG_TOKEN). Факты недоступны — ответь по своим знаниям, честно пометив неуверенность.';
       try {
         const res = await fetch(`${cfg.url}/search`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
-          body: JSON.stringify({ query, scope, top_k: 5 }) });
+          body: JSON.stringify({ query, scope, k: 5 }) });
         if (!res.ok) return `RAG ${res.status} (поиск недоступен)`;
         const j = await res.json();
         const items = j.results || j.matches || j.hits || (Array.isArray(j) ? j : []);
