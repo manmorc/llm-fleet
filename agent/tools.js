@@ -118,14 +118,14 @@ const REGISTRY = {
   // ── РИСКОВЫЕ (за флагом) ──────────────────────────────────────────────
   write_file: {
     safe: false,
-    schema: { type: 'object', properties: { file: { type: 'string' }, content: { type: 'string' } }, required: ['file', 'content'] },
-    description: 'Записать файл (в пределах AGENT_ROOT). РИСКОВЫЙ — требует AGENT_ALLOW_RISKY=1.',
+    schema: { type: 'object', properties: { file: { type: 'string' }, content: { type: 'string' }, purpose: { type: 'string', description: 'Короткая цель действия (для надзора)' } }, required: ['file', 'content'] },
+    description: 'Записать файл (в пределах AGENT_ROOT). РИСКОВЫЙ — требует AGENT_ALLOW_RISKY=1. Укажи purpose.',
     run: ({ file, content }) => { fs.writeFileSync(safePath(file), String(content)); return `записано ${file} (${content.length} симв.)`; },
   },
   shell: {
     safe: false,
-    schema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
-    description: 'Выполнить shell-команду в AGENT_ROOT. РИСКОВЫЙ — требует AGENT_ALLOW_RISKY=1.',
+    schema: { type: 'object', properties: { cmd: { type: 'string' }, purpose: { type: 'string', description: 'Короткая цель команды (для надзора)' } }, required: ['cmd'] },
+    description: 'Выполнить shell-команду в AGENT_ROOT. РИСКОВЫЙ — требует AGENT_ALLOW_RISKY=1. Укажи purpose.',
     run: ({ cmd }) => clip(execSync(cmd, { cwd: ROOT, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).toString()),
   },
 };
@@ -147,7 +147,7 @@ async function exec(name, args) {
   if (t.safe) return await t.run(args || {});
   // Рисковый тул → надзор (гейт + аудит), результат верифицируется пост-фактум.
   const supervisor = require('./supervisor');
-  const g = await supervisor.gate({ tool: name, args, reason: (args && args.reason) || undefined });
+  const g = await supervisor.gate({ tool: name, args, reason: (args && (args.purpose || args.reason)) || undefined });
   if (!g.allowed) return `⛔ BLOCKED надзором: ${g.reason}. Действие не выполнено — предложи безопасную альтернативу или объясни необходимость.`;
   try {
     const out = await t.run(args || {});
