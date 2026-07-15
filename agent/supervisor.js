@@ -58,6 +58,20 @@ async function fileReview(req) {
   return { allowed: false, reason: 'file-review: таймаут ожидания решения' };
 }
 
+// ask-режим: интерактивный y/N в терминале (для solo-CLI, борроу из Personal_Assistant).
+async function askReview(req) {
+  if (!process.stdin.isTTY && process.env.AGENT_ASSUME_TTY !== '1') {
+    // нет терминала (pm2/скрипт) → безопасный дефолт: отказ
+    return { allowed: false, reason: 'ask-review: нет TTY, авто-отказ' };
+  }
+  const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+  const q = `\n🔐 АППРУВ: "${req.tool}" ${JSON.stringify(req.args)}${req.reason ? ' · цель: ' + req.reason : ''}\n   Разрешить? [y/N] `;
+  const ans = await new Promise((resolve) => rl.question(q, resolve));
+  rl.close();
+  const yes = /^\s*(y|yes|да|д)\s*$/i.test(ans || '');
+  return { allowed: yes, reason: `ask-review: ${yes ? 'разрешено' : 'отклонено'} пользователем` };
+}
+
 // bus-режим: заявка supervisor'у (desktop-tt4i69c=Claude) через Redis, ждём решение в agents:approvals:<id>.
 async function busReview(req) {
   const IORedis = require('ioredis');
@@ -85,6 +99,7 @@ async function gate({ tool, args, reason }) {
   let decision;
   if (MODE === 'allow') decision = { allowed: true, reason: 'supervisor=allow' };
   else if (MODE === 'deny') decision = { allowed: false, reason: 'supervisor=deny (надзор не настроен)' };
+  else if (MODE === 'ask') decision = await askReview({ id, tool, args, reason });
   else if (MODE === 'file') decision = await fileReview({ id, tool, args, reason });
   else if (MODE === 'bus') decision = await busReview({ id, tool, args, reason });
   else decision = { allowed: false, reason: `неизвестный режим надзора: ${MODE}` };

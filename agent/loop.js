@@ -32,14 +32,21 @@ function buildSystemPrompt({ skeptic } = {}) {
 }
 
 async function chatTools(messages, { model, temperature = 0.2 } = {}) {
-  const res = await fetch(`${OLLAMA}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages, tools: tools.schemas(), stream: false, options: { temperature } }),
-  });
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const j = await res.json();
-  return j.message || { role: 'assistant', content: '' };
+  // Ретрай на транзиентные сбои (ollama свопит модели под памятью → fetch failed / 5xx). До 3 попыток.
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${OLLAMA}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, tools: tools.schemas(), stream: false, options: { temperature } }),
+      });
+      if (!res.ok) { lastErr = new Error(`ollama ${res.status}`); if (res.status < 500) throw lastErr; }
+      else { const j = await res.json(); return j.message || { role: 'assistant', content: '' }; }
+    } catch (e) { lastErr = e; }
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); // backoff перед повтором
+  }
+  throw new Error(`ollama недоступна после 3 попыток: ${lastErr && lastErr.message}`);
 }
 
 // Скептик-каркас для диспозиции/знаниевого суждения (доказано бенчмарком: факт+скептик флипает
