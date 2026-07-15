@@ -126,7 +126,14 @@ async function converse(history, userText, { model = 'gemma4:latest', maxSteps =
     const msg = await chatTools(history, { model });
     history.push(msg);
     const calls = msg.tool_calls || [];
-    if (!calls.length) { emit({ type: 'final', content: msg.content }); return { answer: msg.content || '', history }; }
+    if (!calls.length) {
+      let ans = (msg.content || '').trim();
+      if (!ans) { // пустой ответ — одна попытка повтора, затем внятный фолбэк (не пустота)
+        try { const r2 = await chatTools(history, { model }); history.push(r2); ans = (r2.content || '').trim(); } catch (_) {}
+      }
+      emit({ type: 'final', content: ans });
+      return { answer: ans || '(не смог сформулировать ответ — переформулируй вопрос покороче)', history };
+    }
     for (const c of calls) {
       const name = c.function?.name; const args = c.function?.arguments || {};
       const sig = name + ':' + JSON.stringify(args); const n = (seen.get(sig) || 0) + 1; seen.set(sig, n);
