@@ -126,7 +126,7 @@ const REGISTRY = {
     safe: false,
     schema: { type: 'object', properties: { cmd: { type: 'string' }, purpose: { type: 'string', description: 'Короткая цель команды (для надзора)' } }, required: ['cmd'] },
     description: 'Выполнить shell-команду в AGENT_ROOT. РИСКОВЫЙ — требует AGENT_ALLOW_RISKY=1. Укажи purpose.',
-    run: ({ cmd }) => clip(execSync(cmd, { cwd: ROOT, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).toString()),
+    run: ({ cmd }) => { const out = execSync(cmd, { cwd: ROOT, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).toString(); return out.length > 3000 ? out.slice(0, 3000) + `\n…[вывод обрезан, всего ${out.length} симв.]` : out; },
   },
 };
 

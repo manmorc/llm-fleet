@@ -11,21 +11,23 @@ function messagesTokens(messages) {
   return messages.reduce((sum, m) => sum + estimateTokens(m.content || '') + estimateTokens(m.tool_calls || ''), 0);
 }
 
-// Компакция: если оценка превышает бюджет — выкидываем САМЫЕ СТАРЫЕ tool-результаты
-// (сохраняя system[0], первый user и последние keepRecent сообщений). Возвращает новый массив.
-function compact(messages, { budgetTokens = 12000, keepRecent = 6 } = {}) {
+// Компакция (conversation-preserving): сохраняем РАЗГОВОР (user/assistant), выкидываем в первую
+// очередь старые объёмные TOOL-результаты (после обработки они не нужны). Только если и без них
+// не влезаем — дропаем самые старые реплики, сохраняя system[0] и последние keepRecentTurns.
+function compact(messages, { budgetTokens = 7000, keepRecentTurns = 14 } = {}) {
   if (messagesTokens(messages) <= budgetTokens) return messages;
-  const head = messages.slice(0, 2);              // system + первый user
-  const tail = messages.slice(-keepRecent);
-  const middle = messages.slice(2, -keepRecent);
-  // из середины убираем tool-результаты первыми (они самые объёмные и наименее нужны позже)
-  const kept = middle.filter((m) => m.role !== 'tool');
-  let out = [...head, ...kept, ...tail];
-  // если всё ещё много — режем и оставшуюся середину
-  while (messagesTokens(out) > budgetTokens && out.length > head.length + tail.length) {
-    out.splice(head.length, 1);
+  const system = messages[0];
+  let rest = messages.slice(1);
+  // 1) дропаем СТАРЫЕ tool-сообщения (самые объёмные) с начала, пока не влезем — разговор не трогаем
+  for (let i = 0; i < rest.length && messagesTokens([system, ...rest]) > budgetTokens;) {
+    if (rest[i].role === 'tool') rest.splice(i, 1);
+    else i++;
   }
-  return out;
+  // 2) если всё ещё много — дропаем самые старые сообщения, сохраняя последние keepRecentTurns
+  while (messagesTokens([system, ...rest]) > budgetTokens && rest.length > keepRecentTurns) {
+    rest.shift();
+  }
+  return [system, ...rest];
 }
 
 module.exports = { estimateTokens, messagesTokens, compact, CHARS_PER_TOKEN };
