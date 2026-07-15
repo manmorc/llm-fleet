@@ -31,15 +31,18 @@ function buildSystemPrompt({ skeptic } = {}) {
     .filter(Boolean).join('\n\n---\n\n');
 }
 
-async function chatTools(messages, { model, temperature = 0.2 } = {}) {
+async function chatTools(messages, { model, temperature = 0.2, noTools = false } = {}) {
   // Ретрай на транзиентные сбои (ollama свопит модели под памятью → fetch failed / 5xx). До 3 попыток.
+  // noTools=true — без схем тулзов (чистый разговор; расклинивает пустые ответы на conversational-ходах).
   let lastErr;
+  const body = { model, messages, stream: false, options: { temperature } };
+  if (!noTools) body.tools = tools.schemas();
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(`${OLLAMA}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, tools: tools.schemas(), stream: false, options: { temperature } }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) { lastErr = new Error(`ollama ${res.status}`); if (res.status < 500) throw lastErr; }
       else { const j = await res.json(); return j.message || { role: 'assistant', content: '' }; }
@@ -128,11 +131,11 @@ async function converse(history, userText, { model = 'gemma4:latest', maxSteps =
     const calls = msg.tool_calls || [];
     if (!calls.length) {
       let ans = (msg.content || '').trim();
-      if (!ans) { // пустой ответ — одна попытка повтора, затем внятный фолбэк (не пустота)
-        try { const r2 = await chatTools(history, { model }); history.push(r2); ans = (r2.content || '').trim(); } catch (_) {}
+      if (!ans) { // пустой ответ — повтор БЕЗ тулзов (схемы часто клинят conversational-ход), потом фолбэк
+        try { const r2 = await chatTools(history, { model, noTools: true }); history.push(r2); ans = (r2.content || '').trim(); } catch (_) {}
       }
       emit({ type: 'final', content: ans });
-      return { answer: ans || '(не смог сформулировать ответ — переформулируй вопрос покороче)', history };
+      return { answer: ans || '(не смог сформулировать ответ — задай конкретнее: что прочитать/сделать/посчитать)', history };
     }
     for (const c of calls) {
       const name = c.function?.name; const args = c.function?.arguments || {};
