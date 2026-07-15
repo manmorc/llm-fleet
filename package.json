@@ -5,7 +5,9 @@
   "bin": { "fleet": "bin/fleet.js" },
   "scripts": {
     "worker": "node src/worker.js",
-    "fleet": "node bin/fleet.js"
+    "fleet": "node bin/fleet.js",
+    "chat": "node agent/chat.js",
+    "agent": "node agent/run.js"
   },
   "dependencies": {
     "bullmq": "^5.34.0",

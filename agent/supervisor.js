@@ -58,15 +58,17 @@ async function fileReview(req) {
   return { allowed: false, reason: 'file-review: таймаут ожидания решения' };
 }
 
-// ask-режим: интерактивный y/N в терминале (для solo-CLI, борроу из Personal_Assistant).
+// Внешний ask-хук (чат отдаёт свой единый readline, чтобы не конфликтовать на stdin).
+let ASKER = null;
+function setAsker(fn) { ASKER = fn; }
+
+// ask-режим: интерактивный y/N (для solo-CLI/чата, борроу из Personal_Assistant).
 async function askReview(req) {
-  if (!process.stdin.isTTY && process.env.AGENT_ASSUME_TTY !== '1') {
-    // нет терминала (pm2/скрипт) → безопасный дефолт: отказ
-    return { allowed: false, reason: 'ask-review: нет TTY, авто-отказ' };
-  }
+  const prompt = `🔐 АППРУВ: "${req.tool}" ${JSON.stringify(req.args)}${req.reason ? ' · цель: ' + req.reason : ''}\n   Разрешить? [y/N] `;
+  if (ASKER) { const yes = await ASKER(prompt); return { allowed: !!yes, reason: `ask-review: ${yes ? 'разрешено' : 'отклонено'}` }; }
+  if (!process.stdin.isTTY && process.env.AGENT_ASSUME_TTY !== '1') return { allowed: false, reason: 'ask-review: нет TTY, авто-отказ' };
   const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
-  const q = `\n🔐 АППРУВ: "${req.tool}" ${JSON.stringify(req.args)}${req.reason ? ' · цель: ' + req.reason : ''}\n   Разрешить? [y/N] `;
-  const ans = await new Promise((resolve) => rl.question(q, resolve));
+  const ans = await new Promise((resolve) => rl.question('\n' + prompt, resolve));
   rl.close();
   const yes = /^\s*(y|yes|да|д)\s*$/i.test(ans || '');
   return { allowed: yes, reason: `ask-review: ${yes ? 'разрешено' : 'отклонено'} пользователем` };
@@ -126,4 +128,4 @@ function recordResult(id, tool, ok, resultPreview) {
   return v;
 }
 
-module.exports = { gate, recordResult, verifyResult, audit, MODE, AUDIT, HARD_DENY };
+module.exports = { gate, recordResult, verifyResult, setAsker, audit, MODE, AUDIT, HARD_DENY };

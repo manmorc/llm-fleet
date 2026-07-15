@@ -111,4 +111,35 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
   return { answer: finalMsg.content || '(достигнут лимит шагов)', steps: maxSteps, trace };
 }
 
-module.exports = { runAgent, buildSystemPrompt, CORE };
+// Многоходовой диалог: держит ПЕРСИСТЕНТНУЮ историю (chat REPL). history[0] — system.
+// Возвращает { answer, history } — историю переиспользуй в следующем ходе.
+async function converse(history, userText, { model = 'gemma4:latest', maxSteps = 8, onEvent } = {}) {
+  history.push({ role: 'user', content: String(userText) });
+  const emit = (e) => { if (onEvent) onEvent(e); };
+  const seen = new Map();
+  async function execWithRetry(name, args) {
+    try { return await tools.exec(name, args); }
+    catch (_) { try { return await tools.exec(name, args); } catch (e2) { return `ERROR: ${e2.message}`; } }
+  }
+  for (let step = 0; step < maxSteps; step++) {
+    history = budget.compact(history);
+    const msg = await chatTools(history, { model });
+    history.push(msg);
+    const calls = msg.tool_calls || [];
+    if (!calls.length) { emit({ type: 'final', content: msg.content }); return { answer: msg.content || '', history }; }
+    for (const c of calls) {
+      const name = c.function?.name; const args = c.function?.arguments || {};
+      const sig = name + ':' + JSON.stringify(args); const n = (seen.get(sig) || 0) + 1; seen.set(sig, n);
+      emit({ type: 'call', name, args });
+      const result = n > 2 ? 'ПОВТОР: уже вызвано — используй результат и отвечай.' : await execWithRetry(name, args);
+      emit({ type: 'result', name, result: String(result).slice(0, 500) });
+      history.push({ role: 'tool', tool_name: name, content: `[${name}] ${result}` });
+    }
+  }
+  history.push({ role: 'user', content: 'Лимит инструментов. Дай финальный ответ из собранного, без вызовов.' });
+  let f; try { f = await chatTools(history, { model }); } catch (_) { f = { content: '' }; }
+  history.push(f);
+  return { answer: f.content || '(лимит шагов)', history };
+}
+
+module.exports = { runAgent, converse, buildSystemPrompt, CORE };
