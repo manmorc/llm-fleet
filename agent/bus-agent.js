@@ -12,7 +12,7 @@ const { runAgentAuto } = require('./router'); // само-управляемый
 const URL = process.env.REDIS_URL;
 const ID = (process.env.AGENT_ID || 'desktop-local').trim();
 const LABEL = process.env.AGENT_LABEL || 'local-agent (gpu, supervised)';
-const MODEL = process.env.MODEL || 'gemma4:latest';
+const MODEL = require('./loop').DEFAULT_MODEL;
 if (!URL) { console.error('нужен REDIS_URL'); process.exit(1); }
 
 const PRESENCE = 'agents:presence:', INBOX = 'agents:inbox:';

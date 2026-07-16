@@ -20,7 +20,12 @@ const HOME = os.homedir();
 const REDIS_URL = process.env.REDIS_URL || L.REDIS_URL || '';        // секрет — локально
 const OLLAMA_URL = process.env.OLLAMA_URL || L.OLLAMA_URL || 'http://127.0.0.1:11434';
 const NODE_ID = process.env.FLEET_NODE_ID || L.FLEET_NODE_ID || 'desktop-tt4i69c'; // bus/worker id ноды
-const MODEL = process.env.FLEET_MODEL || L.FLEET_MODEL || 'gemma4:latest';
+// Боевая модель ноды — gemma-4-26b через llama-server (не ollama): по замерам она берёт 3/3 на
+// тестах суждения там, где прежняя 8B давала 0/3 (tools/moe-serve/BENCHMARK.md). Поднимается
+// ПО ТРЕБОВАНИЮ (agent/server.js), в простое VRAM свободна.
+const MODEL = process.env.FLEET_MODEL || L.FLEET_MODEL || 'gemma26b';
+const LLM_BACKEND = process.env.LLM_BACKEND || L.LLM_BACKEND || 'openai';
+const LLM_URL = process.env.LLM_URL || L.LLM_URL || 'http://127.0.0.1:8081/v1';
 const common = { cwd: __dirname, autorestart: true, max_restarts: 50, restart_delay: 3000, time: true };
 
 module.exports = {
@@ -30,11 +35,12 @@ module.exports = {
       env: { REDIS_URL, AGENT_ID: NODE_ID } },
     // 2) BullMQ LLM-воркер (боевой инференс флота: parseSignal/chat/echo)
     { ...common, name: `llm-worker-${NODE_ID}`, script: 'src/worker.js',
-      env: { NODE_ENV: 'production', REDIS_URL, MODEL, WORKER_ID: NODE_ID, CONCURRENCY: '1', OLLAMA_URL } },
+      env: { NODE_ENV: 'production', REDIS_URL, MODEL, WORKER_ID: NODE_ID, CONCURRENCY: '1', LLM_BACKEND, LLM_URL, OLLAMA_URL } },
     // 3) автономный агент desktop-local (tool-use петля + judgment-mode, под надзором)
     { ...common, name: 'desktop-local-agent', script: 'agent/bus-agent.js',
       env: {
         REDIS_URL, MODEL, OLLAMA_URL,
+        AGENT_BACKEND: LLM_BACKEND, AGENT_API_URL: LLM_URL,
         AGENT_ID: 'desktop-local',
         AGENT_PRIVKEY_FILE: path.join(HOME, '.agent-bus', 'desktop-local.key'),
         AGENT_SUPERVISOR: process.env.AGENT_SUPERVISOR || L.AGENT_SUPERVISOR || 'deny', // read-only обкатка

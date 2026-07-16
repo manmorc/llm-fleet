@@ -3,7 +3,7 @@
 // с проверяемым финальным ответом. Прогон ×RUNS на СТАБИЛЬНОСТЬ (§7: вариативность = часть результата).
 //   AGENT_ROOT=~/agent-sandbox RUNS=3 node agent/eval-agent.js [model]
 const { runAgent } = require('./loop');
-const MODEL = process.argv[2] || process.env.MODEL || 'gemma4:latest';
+const MODEL = process.argv[2] || require('./loop').DEFAULT_MODEL;
 const RUNS = parseInt(process.env.RUNS || '3', 10);
 const MAXSTEPS = parseInt(process.env.MAXSTEPS || '8', 10);
 

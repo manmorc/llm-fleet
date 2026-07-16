@@ -1,4 +1,4 @@
-const { runAgent, chatTools, BACKEND } = require('./loop');
+const { runAgent, chatTools, DEFAULT_MODEL } = require('./loop');
 
 // Само-управляемый judgment-mode: классифицируем задачу и АВТО-применяем доказанный каркас
 // (карта суждения: reasoning→CoT; disposition→skeptic; knowledge→факты+skeptic; structure→как есть).
@@ -33,12 +33,11 @@ async function reason(task, { model = REASON_MODEL } = {}) {
   } catch (e) { return null; }
 }
 
-// Модель классификатора берём из БЭКЕНДА, а не прибиваем к ollama: иначе для одной задачи
-// поднимаются ДВЕ модели (боевая 26B + gemma4 только ради classify) и дерутся за 12 ГБ VRAM,
-// а проигравшая уезжает на CPU и НЕЗАМЕТНО начинает отвечать иначе (замер: structure вместо
-// reasoning 7/7). Одна модель за раз — по умолчанию, а не по правилу, которое надо помнить.
-const DEFAULT_MODEL = process.env.MODEL || (BACKEND === 'openai' ? 'gemma26b' : 'gemma4:latest');
-
+// Классификатор идёт через chatTools (тот же бэкенд и та же модель, что и петля), а НЕ прибит
+// к ollama: иначе для одной задачи поднимаются ДВЕ модели (боевая 26B + gemma4 только ради
+// classify), дерутся за 12 ГБ VRAM, и проигравшая уезжает на CPU, НЕЗАМЕТНО начиная отвечать
+// иначе (замер: structure вместо reasoning 7/7). Одна модель за раз — по умолчанию, а не по
+// правилу, которое надо помнить.
 async function classify(task, { model = DEFAULT_MODEL } = {}) {
   try {
     const m = await chatTools([{ role: 'system', content: CLS_SYS }, { role: 'user', content: String(task).slice(0, 2000) }],

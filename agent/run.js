@@ -6,7 +6,7 @@ const { runAgentAuto } = require('./router');
 const t = require('./tools');
 
 const task = process.argv[2];
-const model = process.argv[3] || process.env.MODEL || 'gemma4:latest';
+const model = process.argv[3] || require('./loop').DEFAULT_MODEL;
 if (!task) { console.error('usage: AGENT_ROOT=<dir> node agent/run.js "<задача>" [model]'); process.exit(1); }
 
 console.log(`agent desktop-local | model=${model} | root=${t.ROOT} | risky=${t.ALLOW_RISKY ? 'ON' : 'off'}`);

@@ -1,13 +1,13 @@
 # agent — автономный локальный агент (desktop-local)
 
-Tool-use агент поверх локальной GPU-модели (ollama). Цель: вырастить локальную модель из «сырого
+Tool-use агент поверх локальной GPU-модели (gemma-4-26b через llama-server, поднимается по требованию). Цель: вырастить локальную модель из «сырого
 inference-эндпоинта» в полноценного (пусть менее продуктивного) участника флота, выполняющего задачи
 самостоятельно — **под надзором**, пока не подтверждена его безопасность и адекватность.
 
 ## Модули
 - `tools.js` — реестр тулзов. **Безопасные** (read-only, заперты в `AGENT_ROOT`): `list_dir`, `read_file`, `http_get` (только localhost/tailnet). **Рисковые** (`write_file`, `shell`) — только при `AGENT_ALLOW_RISKY=1` И через надзор.
 - `supervisor.js` — гейт рисковых действий: (1) статические hard-deny паттерны (rm -rf, format, shutdown, реестр, schtasks, `|sh`, …) — безусловно; (2) аппрув ревьюера. Режимы `AGENT_SUPERVISOR`: `deny` (по умолч.) · `allow` · `file` (заявка → decision-файл) · `bus` (заявка мне, Claude/`desktop-tt4i69c`, через шину → одобряю/отклоняю). Аудит всего → `~/.agent-bus/desktop-local.audit.log`.
-- `loop.js` — ReAct-петля: ollama `/api/chat` c tools → выполняем tool_calls → результат в диалог → итерируем (maxSteps) → финальный ответ. `trace` для аудита.
+- `loop.js` — ReAct-петля: бэкенд (llama-server `/v1` по умолчанию, ollama опционально) c tools → выполняем tool_calls → результат в диалог → итерируем (maxSteps) → финальный ответ. `trace` для аудита.
 - `run.js` — локальный запуск для теста (без шины).
 - `approve.js` — решение надзора в bus-режиме: `REDIS_URL=… node agent/approve.js <reqId> allow|deny`.
 
@@ -24,7 +24,7 @@ AGENT_ROOT=… AGENT_ALLOW_RISKY=1 AGENT_SUPERVISOR=bus REDIS_URL=… node agent
 и действия, и результаты. Аудит-лог = детектор проблем, ничего молча (принцип честности).
 
 ## Статус
-v0 — петля и надзор проверены end-to-end на `gemma4:latest` (корректные tool_calls; allow выполняет,
+v0 — петля и надзор проверены end-to-end (изначально на `gemma4:latest`, ныне боевая `gemma26b`) (корректные tool_calls; allow выполняет,
 deny/hard-deny блокируют, агент адаптируется). **НЕ подключён к шине автономно** — вывод `desktop-local`
 отдельной bus-идентичностью + постоянный приём задач ждут: регистрации pubkey (trust-anchor владельца)
 и обкатки надзора. См. `../PRINCIPLES.md`, `../ARCHITECTURE.md`.

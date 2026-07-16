@@ -4,17 +4,24 @@ const os = require('os');
 const tools = require('./tools');
 const budget = require('./budget');
 
-// Tool-use петля (ReAct-стиль) поверх локального ollama-модели.
+// Tool-use петля (ReAct-стиль) поверх локальной модели.
 // Пока модель зовёт тулзы — выполняем и возвращаем результат в диалог; выходим на финальном ответе
-// или по достижении maxSteps. Модель: gemma4:latest подтверждённо умеет tool_calls (см. probe).
+// или по достижении maxSteps. Боевая модель — gemma-4-26b (llama-server), поднимается по требованию.
 
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 
 // Два бэкенда: ollama (/api/chat) и OpenAI-совместимый (llama-server /v1/chat/completions).
 // Различия, которые нормализуем: путь ответа (message vs choices[0].message), аргументы tool_calls
 // (ollama=объект, OpenAI=JSON-строка), формат tool-результата (tool_name vs tool_call_id), max_tokens.
-const BACKEND = process.env.AGENT_BACKEND || 'ollama';         // ollama | openai
+// ДЕФОЛТ — gemma-4-26b через llama-server (openai-совместимый). Она боевая на этой машине везде:
+// чат, агент, воркер. Прежний дефолт (ollama + gemma4:latest, 8B) снят — 8B давала 0/3 на тестах
+// суждения там, где 26B даёт 3/3 (tools/moe-serve/BENCHMARK.md). ollama-путь оставлен рабочим:
+// AGENT_BACKEND=ollama — для машин флота без этой модели.
+const BACKEND = process.env.AGENT_BACKEND || 'openai';         // openai (gemma-4-26b) | ollama
 const API_URL = process.env.AGENT_API_URL || (BACKEND === 'openai' ? 'http://127.0.0.1:8081/v1' : OLLAMA);
+const DEFAULT_MODEL = process.env.MODEL || (BACKEND === 'openai' ? 'gemma26b' : 'gemma4:latest');
+// Автоподъём модели — только если бэкенд смотрит на ЛОКАЛЬНЫЙ llama-server (чужой endpoint не наш).
+const LOCAL_LLAMA = BACKEND === 'openai' && /^https?:\/\/(127\.0\.0\.1|localhost):/.test(API_URL);
 // max_tokens — ПОТОЛОК, а не цель: модель закончит сама (finish=stop), высокий потолок ничего не стоит.
 // У thinking-моделей размышление и ответ делят ОДИН бюджет: мало → бюджет уходит на мысли,
 // ответ пустой (finish=length). 2048 не хватало на сложный анализ (T1 обрезался) → берём 8192.
@@ -98,6 +105,8 @@ async function apiCall(messages, { model, temperature = 0.2, noTools = false, no
 }
 
 async function chatTools(messages, opts = {}) {
+  // Модель поднимается ПО ТРЕБОВАНИЮ: первый вызов ждёт загрузку (~15 с), в простое VRAM свободна.
+  if (LOCAL_LLAMA) await require('./server').ensure({ log: (m) => process.stderr.write(`[модель] ${m}\n`) });
   // Ретрай на транзиентные сбои (свап моделей / 503 "Loading model" / fetch failed). До 3 попыток.
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -117,7 +126,7 @@ const SKEPTIC = `\nУСТАНОВКА (суждение): будь СКЕПТИ�
 // Выполнить задачу. opts.facts (строка/массив) — инжект фактов из RAG (знаниевое суждение).
 // opts.skeptic — включить скептик-каркас (диспозиция). Вместе = judgment-mode (проверенный причинно).
 // Возвращает { answer, steps, trace[] }. trace — для отладки/аудита (§7 честность).
-async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, facts, skeptic, noThink } = {}) {
+async function runAgent(task, { model = DEFAULT_MODEL, maxSteps = 6, onEvent, facts, skeptic, noThink } = {}) {
   const sys = buildSystemPrompt({ skeptic });
   const factBlock = facts ? `ИЗВЕСТНЫЕ ФАКТЫ (учитывай их при ответе):\n${Array.isArray(facts) ? facts.map((f, i) => `[${i + 1}] ${f}`).join('\n') : facts}\n\nЗАДАЧА: ` : '';
   let messages = [{ role: 'system', content: sys }, { role: 'user', content: factBlock + String(task) }];
@@ -171,7 +180,7 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
 
 // Многоходовой диалог: держит ПЕРСИСТЕНТНУЮ историю (chat REPL). history[0] — system.
 // Возвращает { answer, history } — историю переиспользуй в следующем ходе.
-async function converse(history, userText, { model = 'gemma4:latest', maxSteps = 8, onEvent } = {}) {
+async function converse(history, userText, { model = DEFAULT_MODEL, maxSteps = 8, onEvent } = {}) {
   history.push({ role: 'user', content: String(userText) });
   const emit = (e) => { if (onEvent) onEvent(e); };
   const seen = new Map();
@@ -207,4 +216,4 @@ async function converse(history, userText, { model = 'gemma4:latest', maxSteps =
   return { answer: f.content || '(лимит шагов)', history };
 }
 
-module.exports = { runAgent, converse, buildSystemPrompt, chatTools, BACKEND, CORE };
+module.exports = { runAgent, converse, buildSystemPrompt, chatTools, BACKEND, DEFAULT_MODEL, CORE };

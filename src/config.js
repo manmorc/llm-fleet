@@ -45,7 +45,17 @@ module.exports = {
   controlChannel:  process.env.CONTROL_CHANNEL || 'fleet:control',
   workerKeyPrefix: 'fleet:worker:',
   model,
-  ollamaUrl:       process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
+  // Бэкенд инференса. ДЕФОЛТ 'ollama' МЕНЯТЬ НЕЛЬЗЯ: src/ — общий код флота, деплоится на все ноды,
+  // а на mac/linux крутится ollama+qwen3. Нода desktop включает openai (gemma-4-26b) через свой
+  // ecosystem.config.js — конфигом, а не сменой общего дефолта.
+  backend:         process.env.LLM_BACKEND || 'ollama',
+  llmUrl:          process.env.LLM_URL || (process.env.LLM_BACKEND === 'openai'
+                     ? 'http://127.0.0.1:8081/v1'
+                     : (process.env.OLLAMA_URL || 'http://127.0.0.1:11434')),
+  ollamaUrl:       process.env.OLLAMA_URL || 'http://127.0.0.1:11434',   // legacy-читатели
+  // max_tokens — ПОТОЛОК, а не цель (модель заканчивает сама). У думающих моделей размышление
+  // и ответ делят ОДИН бюджет: мало → ответ пустой (finish=length). Замерено: 8192 достаточно.
+  maxTokens:       parseInt(process.env.LLM_MAX_TOKENS || '8192', 10),
   concurrency:     parseInt(process.env.CONCURRENCY || '2', 10),
   workerId:        process.env.WORKER_ID || os.hostname(),
   pm2Name:         process.env.PM2_NAME || 'llm-fleet',

@@ -4,7 +4,7 @@
 //   AGENT_ROOT=~/agent-sandbox node agent/regression.js
 const { runAgent } = require('./loop');
 const { classify, runAgentAuto } = require('./router');
-const MODEL = process.env.MODEL || 'gemma4:latest';
+const MODEL = require('./loop').DEFAULT_MODEL;
 const THRESHOLD = 0.9;
 
 const has = (s) => (a) => a.toLowerCase().includes(String(s).toLowerCase());
@@ -34,9 +34,10 @@ const DISPO = { q: 'Схема обещает гарантированные 40%
 // Нехватка VRAM бьёт не только по скорости, но и по ПРАВИЛЬНОСТИ. Ложный провал хуже, чем отсутствие
 // прогона: он отправляет чинить несуществующий баг. Поэтому — отказываемся, а не врём (§7).
 function vramGuard() {
-  // Только для ollama-бэкенда. При AGENT_BACKEND=openai всё (петля+классификатор) идёт на ОДНУ
-  // модель llama-server, которая VRAM занимать ОБЯЗАНА — тут гвард только мешал бы.
-  if ((process.env.AGENT_BACKEND || 'ollama') !== 'ollama') return;
+  // Только для ollama-бэкенда. На дефолтном openai всё (петля+классификатор) идёт на ОДНУ модель
+  // llama-server, которая VRAM занимать ОБЯЗАНА — тут гвард только мешал бы. Дефолт берём из loop.js,
+  // а не повторяем 'ollama' строкой: разъедется при следующей смене дефолта.
+  if (require('./loop').BACKEND !== 'ollama') return;
   let free;
   try {
     const out = require('child_process').execSync('nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits',

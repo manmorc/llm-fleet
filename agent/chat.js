@@ -8,7 +8,7 @@ const { converse, buildSystemPrompt } = require('./loop');
 const supervisor = require('./supervisor');
 const t = require('./tools');
 
-const model = process.argv[2] || process.env.MODEL || 'gemma4:latest';
+const model = process.argv[2] || require('./loop').DEFAULT_MODEL;
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const question = (q) => new Promise((resolve) => rl.question(q, resolve));
 
