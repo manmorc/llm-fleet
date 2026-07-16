@@ -65,13 +65,16 @@ function buildSystemPrompt({ skeptic } = {}) {
 
 // Один вызов бэкенда → НОРМАЛИЗОВАННОЕ сообщение {role, content, tool_calls:[{id, function:{name, arguments:ОБЪЕКТ}}]}.
 // Сырой ответ бэкенда прикреплён как _raw — его и кладём обратно в историю (бэкенд ждёт свой формат).
-async function apiCall(messages, { model, temperature = 0.2, noTools = false, noThink = false } = {}) {
+async function apiCall(messages, { model, temperature = 0.2, noTools = false, noThink = false, json = false } = {}) {
   const oai = isOAI();
   const url = oai ? `${API_URL}/chat/completions` : `${API_URL}/api/chat`;
   const body = oai
     ? { model, messages, max_tokens: MAX_TOKENS, temperature }
     : { model, messages, stream: false, options: { temperature } };
   if (!noTools) body.tools = tools.schemas();
+  // JSON-режим (для классификатора). Разные имена у бэкендов — нормализуем здесь, чтобы
+  // вызывающий не знал про бэкенд (иначе он прибивается к ollama — так и появилась вторая модель).
+  if (json) { if (oai) body.response_format = { type: 'json_object' }; else body.format = 'json'; }
   // Выключение думалки. ЕДИНСТВЕННАЯ работающая ручка (замерено): reasoning_budget в теле и
   // reasoning_effort игнорируются, а промпт «отвечай кратко» делает ВДВОЕ ХУЖЕ (модель срывается
   // в спираль на 15k символов и отдаёт пустой ответ). Даёт 3.3× (6с vs 20с), tool_calls не ломает.
@@ -204,4 +207,4 @@ async function converse(history, userText, { model = 'gemma4:latest', maxSteps =
   return { answer: f.content || '(лимит шагов)', history };
 }
 
-module.exports = { runAgent, converse, buildSystemPrompt, CORE };
+module.exports = { runAgent, converse, buildSystemPrompt, chatTools, BACKEND, CORE };

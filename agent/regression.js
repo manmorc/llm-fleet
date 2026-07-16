@@ -34,6 +34,9 @@ const DISPO = { q: 'Схема обещает гарантированные 40%
 // Нехватка VRAM бьёт не только по скорости, но и по ПРАВИЛЬНОСТИ. Ложный провал хуже, чем отсутствие
 // прогона: он отправляет чинить несуществующий баг. Поэтому — отказываемся, а не врём (§7).
 function vramGuard() {
+  // Только для ollama-бэкенда. При AGENT_BACKEND=openai всё (петля+классификатор) идёт на ОДНУ
+  // модель llama-server, которая VRAM занимать ОБЯЗАНА — тут гвард только мешал бы.
+  if ((process.env.AGENT_BACKEND || 'ollama') !== 'ollama') return;
   let free;
   try {
     const out = require('child_process').execSync('nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits',

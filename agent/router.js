@@ -1,9 +1,8 @@
-const { runAgent } = require('./loop');
+const { runAgent, chatTools, BACKEND } = require('./loop');
 
 // Само-управляемый judgment-mode: классифицируем задачу и АВТО-применяем доказанный каркас
 // (карта суждения: reasoning→CoT; disposition→skeptic; knowledge→факты+skeptic; structure→как есть).
-// Классификатор — дешёвый вызов локальной модели с JSON-выводом.
-const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+// Классификатор — дешёвый вызов ТОЙ ЖЕ модели, что и петля (через chatTools), с JSON-выводом.
 
 const CLS_SYS = `Классифицируй задачу в РОВНО ОДИН класс и верни СТРОГО JSON {"class":"...","why":"..."}. Ключевой критерий — ЧЕГО не хватает для правильного ответа:
 - "reasoning": ответ ВЫЧИСЛИМ логикой/математикой ИЗ ДАННЫХ В ВОПРОСЕ, внешние факты не нужны. Пример: «насколько 8% compound поднимает эффективную ставку помесячно/почасово» — чистый расчёт.
@@ -28,19 +27,23 @@ function needsTools(task) { return /\.(txt|json|md|csv|log)\b|\bфайл|\bпа�
 const REASON_MODEL = process.env.REASON_MODEL || '';
 async function reason(task, { model = REASON_MODEL } = {}) {
   try {
-    const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: String(task) + '\n\nРассуждай пошагово, разбери допущения и подводные камни, затем дай чёткий финальный вывод.' }], stream: false, options: { temperature: 0.2 } }) });
-    const j = await res.json();
-    return (j.message?.content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const m = await chatTools([{ role: 'user', content: String(task) + '\n\nРассуждай пошагово, разбери допущения и подводные камни, затем дай чёткий финальный вывод.' }],
+      { model, noTools: true });
+    return (m.content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   } catch (e) { return null; }
 }
 
-async function classify(task, { model = 'gemma4:latest' } = {}) {
+// Модель классификатора берём из БЭКЕНДА, а не прибиваем к ollama: иначе для одной задачи
+// поднимаются ДВЕ модели (боевая 26B + gemma4 только ради classify) и дерутся за 12 ГБ VRAM,
+// а проигравшая уезжает на CPU и НЕЗАМЕТНО начинает отвечать иначе (замер: structure вместо
+// reasoning 7/7). Одна модель за раз — по умолчанию, а не по правилу, которое надо помнить.
+const DEFAULT_MODEL = process.env.MODEL || (BACKEND === 'openai' ? 'gemma26b' : 'gemma4:latest');
+
+async function classify(task, { model = DEFAULT_MODEL } = {}) {
   try {
-    const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'system', content: CLS_SYS }, { role: 'user', content: String(task).slice(0, 2000) }], format: 'json', stream: false, options: { temperature: 0 } }) });
-    const j = await res.json();
-    const cls = JSON.parse(j.message?.content || '{}').class;
+    const m = await chatTools([{ role: 'system', content: CLS_SYS }, { role: 'user', content: String(task).slice(0, 2000) }],
+      { model, temperature: 0, json: true, noTools: true });
+    const cls = JSON.parse(m.content || '{}').class;
     return ['reasoning', 'knowledge', 'disposition', 'structure'].includes(cls) ? cls : 'structure';
   } catch (_) { return 'structure'; }
 }
@@ -48,7 +51,7 @@ async function classify(task, { model = 'gemma4:latest' } = {}) {
 // Авто-прогон: классифицирует → выставляет facts/skeptic/CoT по классу → runAgent.
 // facts (если есть) прокидываются; для knowledge без фактов ставим needsFacts=true в результат
 // (сигнал вызывающему: подтяни RAG — карта суждения доказала, что знаниевое лечится фактом).
-async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8, onEvent } = {}) {
+async function runAgentAuto(task, { model = DEFAULT_MODEL, facts, maxSteps = 8, onEvent } = {}) {
   const cls = await classify(task, { model });
   if (onEvent) onEvent({ type: 'class', class: cls });
   // Model-routing: reasoning без нужды в данных → отдельная reasoning-модель (если задана).
@@ -61,10 +64,13 @@ async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8
   let effTask = task;
   let needsFacts = false;
   if (cls === 'disposition') opts.skeptic = true;
-  // structure (распарсить/извлечь/посчитать тулзой) — думать нечего, черновик там чистые накладные.
-  // Замерено: выключение думалки даёт 3.3× (6с vs 20с) и НЕ ломает tool_calls (тот же вызов, 1с vs 2с).
-  // Только здесь: на многошаговом счёте без черновика модель врёт уверенно (552 вместо 506 за 0с).
-  else if (cls === 'structure') opts.noThink = true;
+  // ДУМАЛКУ НЕ ТРОГАЕМ НИГДЕ — она сама себя ограничивает лучше любого потолка.
+  // Свип бюджета на 6 свежих задачах (moe-serve/BENCHMARK.md): 0 → 4/6 · 128 → 4/6 · 256 → 6/6, но
+  // одна задача 193с и finish=length (обрубок мысли выплеснулся в ответ) · 512 → 6/6 · -1 → 6/6.
+  // При -1 модель думает ~350 токенов САМА. Любой потолок либо выше этого (no-op), либо ниже (ломает).
+  // Экономить нечего. Цена думалки: +33% правильности (4/6→6/6) за 8.5с — цель владельца это качество,
+  // а не секунды. Прежняя правка (noThink на structure) откачена: экономила 8с ценой риска, которого
+  // никто не просил, а классификатор УЖЕ ошибался (reasoning→structure) — ошибка + выкл думалка = двойной провал.
   else if (cls === 'reasoning') effTask = String(task) + '\n\n(Рассуждай пошагово, разбери допущения, потом финальный вывод.)';
   else if (cls === 'knowledge') {
     opts.skeptic = true; // знание×диспозиция: факт+скептик
