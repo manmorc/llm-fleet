@@ -15,7 +15,10 @@ const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 // (ollama=объект, OpenAI=JSON-строка), формат tool-результата (tool_name vs tool_call_id), max_tokens.
 const BACKEND = process.env.AGENT_BACKEND || 'ollama';         // ollama | openai
 const API_URL = process.env.AGENT_API_URL || (BACKEND === 'openai' ? 'http://127.0.0.1:8081/v1' : OLLAMA);
-const MAX_TOKENS = parseInt(process.env.AGENT_MAX_TOKENS || '2048', 10); // thinking-модели: <2048 → пустой ответ
+// max_tokens — ПОТОЛОК, а не цель: модель закончит сама (finish=stop), высокий потолок ничего не стоит.
+// У thinking-моделей размышление и ответ делят ОДИН бюджет: мало → бюджет уходит на мысли,
+// ответ пустой (finish=length). 2048 не хватало на сложный анализ (T1 обрезался) → берём 8192.
+const MAX_TOKENS = parseInt(process.env.AGENT_MAX_TOKENS || '8192', 10);
 const isOAI = () => BACKEND === 'openai';
 const safeJson = (s) => { try { return JSON.parse(s); } catch (_) { return {}; } };
 
