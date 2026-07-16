@@ -22,7 +22,10 @@ Q: «Извлеки поле port из config.json» A: {"class":"structure","wh
 function needsTools(task) { return /\.(txt|json|md|csv|log)\b|\bфайл|\bпапк|\bдиректор|рабоч.{0,6}папк/i.test(String(task)); }
 
 // Чистое рассуждение reasoning-моделью (r1) БЕЗ тулзов (r1 не делает нативных tool_calls, но силён в логике).
-const REASON_MODEL = process.env.REASON_MODEL || 'deepseek-r1:14b';
+// Отдельная reasoning-модель для само-содержащегося рассуждения. Пусто = выключено (тогда
+// reasoning идёт на основную модель + CoT). deepseek-r1 удалена: бенч показал, что она не умеет
+// нативные tool_calls, а по суждению её обошла gemma-4-26b (см. moe-serve/BENCHMARK.md).
+const REASON_MODEL = process.env.REASON_MODEL || '';
 async function reason(task, { model = REASON_MODEL } = {}) {
   try {
     const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -48,8 +51,8 @@ async function classify(task, { model = 'gemma4:latest' } = {}) {
 async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8, onEvent } = {}) {
   const cls = await classify(task, { model });
   if (onEvent) onEvent({ type: 'class', class: cls });
-  // Model-routing: reasoning без нужды в данных → r1 pure-reasoning (сильнее на логике, доказано).
-  if (cls === 'reasoning' && !needsTools(task) && !facts) {
+  // Model-routing: reasoning без нужды в данных → отдельная reasoning-модель (если задана).
+  if (REASON_MODEL && cls === 'reasoning' && !needsTools(task) && !facts) {
     const ans = await reason(task);
     if (ans) { if (onEvent) onEvent({ type: 'route', model: REASON_MODEL, mode: 'pure-reason' }); return { answer: ans, steps: 1, trace: [], class: cls, needsFacts: false, model: REASON_MODEL }; }
     // r1 недоступен → fallback на gemma+CoT ниже

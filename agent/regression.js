@@ -47,11 +47,13 @@ const DISPO = { q: 'Схема обещает гарантированные 40%
   const okd = DISPO.ok(ad); if (okd) pass++; else fails.push('dispo-skeptic');
   console.log(`  ${okd ? '✅' : '❌'} skeptic-flag`);
 
-  console.log('— model-routing —');
-  total++; let rr = {}; try { rr = await runAgentAuto('Что больше: 2 в степени 10 или 10 в степени 3, и на сколько? Рассуждай.', { maxSteps: 2 }); } catch (_) {}
-  const okr = rr.class === 'reasoning' && /r1|deepseek/i.test(rr.model || '') && String(rr.answer).includes('1024');
-  if (okr) pass++; else fails.push(`routing(cls=${rr.class},model=${rr.model})`);
-  console.log(`  ${okr ? '✅' : '❌'} reasoning→r1 (1024 vs 1000)`);
+  console.log('— reasoning-класс —');
+  total++; let rr = {}; try { rr = await runAgentAuto('Что больше: 2 в степени 10 или 10 в степени 3, и на сколько? Рассуждай.', { maxSteps: 3 }); } catch (_) {}
+  // REASON_MODEL по умолчанию пуст (r1 удалена) → reasoning идёт на основную модель + CoT.
+  // Проверяем классификацию и ПРАВИЛЬНОСТЬ ответа, а не конкретную модель.
+  const okr = rr.class === 'reasoning' && String(rr.answer).includes('1024');
+  if (okr) pass++; else fails.push(`reasoning(cls=${rr.class})`);
+  console.log(`  ${okr ? '✅' : '❌'} reasoning классифицирован + верно (1024 vs 1000)`);
 
   console.log('— knowledge→needsFacts (RAG inactive) —');
   total++; let rk = {}; try { rk = await runAgentAuto('Стоит ли гнаться за фандингом 300% на тонком альткоине для дельта-нейтрального арбитража?', { maxSteps: 2 }); } catch (_) {}

@@ -1,10 +1,21 @@
-// Провайдер-нейтральная консервативная оценка токенов (борроу из Personal_Assistant budget.py).
-// Без модель-специфичного токенайзера: ~3 символа на токен. Для гварда контекста в петле.
-const CHARS_PER_TOKEN = 3;
+// Провайдер-нейтральная КОНСЕРВАТИВНАЯ оценка токенов (для гварда контекста в петле).
+// ЗАМЕРЕНО на gemma-4-26b (prompt_tokens против длины строки):
+//   русская проза  — 2.96 симв/токен
+//   английская     — 3.48 симв/токен
+//   JSON/структура — 1.43 симв/токен  ← ВДВОЕ плотнее!
+// Результаты тулзов — сплошной JSON, поэтому «3» их недооценивала вдвое и компакция срабатывала
+// слишком поздно. Гвард обязан ошибаться в БЕЗОПАСНУЮ сторону: лучше переоценить токены и
+// компактить раньше, чем недооценить и переполнить контекст. Берём 2.
+const CHARS_PER_TOKEN = 2.8;      // проза (рус 2.96 / англ 3.48 — берём нижнюю границу)
+const CHARS_PER_TOKEN_DENSE = 1.4; // JSON/структура (замер: 1.43)
 
+// Плотный текст (JSON, код, числа) токенизируется вдвое плотнее прозы. Определяем по доле
+// служебных символов: результаты тулзов — почти всегда JSON, и именно они забивают контекст.
 function estimateTokens(value) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return Math.ceil((text || '').length / CHARS_PER_TOKEN);
+  const text = (typeof value === 'string' ? value : JSON.stringify(value)) || '';
+  if (!text) return 0;
+  const punct = (text.match(/[{}[\]",:0-9]/g) || []).length / text.length;
+  return Math.ceil(text.length / (punct > 0.15 ? CHARS_PER_TOKEN_DENSE : CHARS_PER_TOKEN));
 }
 
 function messagesTokens(messages) {
