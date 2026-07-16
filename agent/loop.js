@@ -10,6 +10,21 @@ const budget = require('./budget');
 
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 
+// Два бэкенда: ollama (/api/chat) и OpenAI-совместимый (llama-server /v1/chat/completions).
+// Различия, которые нормализуем: путь ответа (message vs choices[0].message), аргументы tool_calls
+// (ollama=объект, OpenAI=JSON-строка), формат tool-результата (tool_name vs tool_call_id), max_tokens.
+const BACKEND = process.env.AGENT_BACKEND || 'ollama';         // ollama | openai
+const API_URL = process.env.AGENT_API_URL || (BACKEND === 'openai' ? 'http://127.0.0.1:8081/v1' : OLLAMA);
+const MAX_TOKENS = parseInt(process.env.AGENT_MAX_TOKENS || '2048', 10); // thinking-модели: <2048 → пустой ответ
+const isOAI = () => BACKEND === 'openai';
+const safeJson = (s) => { try { return JSON.parse(s); } catch (_) { return {}; } };
+
+// Сообщение с результатом тула — в формате, который ждёт бэкенд.
+function toolResultMsg(call, name, result) {
+  if (isOAI()) return { role: 'tool', tool_call_id: call.id, content: String(result) };
+  return { role: 'tool', tool_name: name, content: `[${name}] ${result}` };
+}
+
 // Слоёный системный промпт (борроу из Personal_Assistant): CORE (неотменяемый контракт) →
 // кастом-слой (редактируемый agent/SYSTEM_PROMPT.md) → runtime-возможности. Кастом не отменяет CORE.
 const CORE = `Ты — автономный агент desktop-local во флоте llm-fleet, работаешь на локальной GPU-модели.
@@ -45,25 +60,41 @@ function buildSystemPrompt({ skeptic } = {}) {
     .filter(Boolean).join('\n\n---\n\n');
 }
 
-async function chatTools(messages, { model, temperature = 0.2, noTools = false } = {}) {
-  // Ретрай на транзиентные сбои (ollama свопит модели под памятью → fetch failed / 5xx). До 3 попыток.
-  // noTools=true — без схем тулзов (чистый разговор; расклинивает пустые ответы на conversational-ходах).
-  let lastErr;
-  const body = { model, messages, stream: false, options: { temperature } };
+// Один вызов бэкенда → НОРМАЛИЗОВАННОЕ сообщение {role, content, tool_calls:[{id, function:{name, arguments:ОБЪЕКТ}}]}.
+// Сырой ответ бэкенда прикреплён как _raw — его и кладём обратно в историю (бэкенд ждёт свой формат).
+async function apiCall(messages, { model, temperature = 0.2, noTools = false } = {}) {
+  const oai = isOAI();
+  const url = oai ? `${API_URL}/chat/completions` : `${API_URL}/api/chat`;
+  const body = oai
+    ? { model, messages, max_tokens: MAX_TOKENS, temperature }
+    : { model, messages, stream: false, options: { temperature } };
   if (!noTools) body.tools = tools.schemas();
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) { const t = await res.text().catch(() => ''); const e = new Error(`api ${res.status}: ${t.slice(0, 120)}`); e.status = res.status; throw e; }
+  const j = await res.json();
+  const raw = (oai ? (j.choices && j.choices[0] && j.choices[0].message) : j.message) || {};
+  const calls = (raw.tool_calls || []).map((c) => ({
+    id: c.id,
+    function: {
+      name: c.function && c.function.name,
+      // OpenAI отдаёт arguments СТРОКОЙ, ollama — объектом
+      arguments: typeof (c.function && c.function.arguments) === 'string' ? safeJson(c.function.arguments) : ((c.function && c.function.arguments) || {}),
+    },
+  }));
+  const norm = { role: 'assistant', content: raw.content || '', tool_calls: calls.length ? calls : undefined };
+  Object.defineProperty(norm, '_raw', { value: raw, enumerable: false });
+  return norm;
+}
+
+async function chatTools(messages, opts = {}) {
+  // Ретрай на транзиентные сбои (свап моделей / 503 "Loading model" / fetch failed). До 3 попыток.
+  let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(`${OLLAMA}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) { lastErr = new Error(`ollama ${res.status}`); if (res.status < 500) throw lastErr; }
-      else { const j = await res.json(); return j.message || { role: 'assistant', content: '' }; }
-    } catch (e) { lastErr = e; }
-    await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); // backoff перед повтором
+    try { return await apiCall(messages, opts); }
+    catch (e) { lastErr = e; if (e.status && e.status < 500 && e.status !== 503) throw e; }
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
   }
-  throw new Error(`ollama недоступна после 3 попыток: ${lastErr && lastErr.message}`);
+  throw new Error(`бэкенд (${BACKEND}) недоступен после 3 попыток: ${lastErr && lastErr.message}`);
 }
 
 // Скептик-каркас для диспозиции/знаниевого суждения (доказано бенчмарком: факт+скептик флипает
@@ -95,7 +126,7 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
   for (let step = 0; step < maxSteps; step++) {
     messages = budget.compact(messages); // гвард контекста: отсечь старые tool-результаты при разрастании
     const msg = await chatTools(messages, { model });
-    messages.push(msg);
+    messages.push(msg._raw || msg); // в историю — родной формат бэкенда
     const calls = msg.tool_calls || [];
     if (!calls.length) {
       emit({ type: 'final', step, content: msg.content });
@@ -116,8 +147,7 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
         result = await execWithRetry(name, args);
       }
       emit({ type: 'result', step, name, result: String(result).slice(0, 500) });
-      // ollama принимает role:'tool'; имя тула кладём и в поле, и в контент (совместимость разных версий)
-      messages.push({ role: 'tool', tool_name: name, content: `[${name}] ${result}` });
+      messages.push(toolResultMsg(c, name, result)); // формат tool-результата зависит от бэкенда
     }
   }
   // Исчерпаны шаги — финальный вызов БЕЗ тулзов, чтобы модель дала ответ из собранного (а не заглушка)
@@ -141,7 +171,7 @@ async function converse(history, userText, { model = 'gemma4:latest', maxSteps =
   for (let step = 0; step < maxSteps; step++) {
     history = budget.compact(history);
     const msg = await chatTools(history, { model });
-    history.push(msg);
+    history.push(msg._raw || msg); // в историю — родной формат бэкенда
     const calls = msg.tool_calls || [];
     if (!calls.length) {
       let ans = (msg.content || '').trim();
@@ -157,7 +187,7 @@ async function converse(history, userText, { model = 'gemma4:latest', maxSteps =
       emit({ type: 'call', name, args });
       const result = n > 2 ? 'ПОВТОР: уже вызвано — используй результат и отвечай.' : await execWithRetry(name, args);
       emit({ type: 'result', name, result: String(result).slice(0, 500) });
-      history.push({ role: 'tool', tool_name: name, content: `[${name}] ${result}` });
+      history.push(toolResultMsg(c, name, result)); // формат зависит от бэкенда
     }
   }
   history.push({ role: 'user', content: 'Лимит инструментов. Дай финальный ответ из собранного, без вызовов.' });
