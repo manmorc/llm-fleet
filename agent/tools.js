@@ -97,6 +97,18 @@ const REGISTRY = {
       return clip(`[${res.status}] ` + (await res.text()));
     },
   },
+  self_test: {
+    safe: true,
+    schema: { type: 'object', properties: {} },
+    description: 'Прогнать регрессионный тест агента (проверить, что харнес не сломан после изменения кода). Обязательно вызывай ПОСЛЕ правки своего кода. Возвращает pass/fail.',
+    run: () => {
+      const repo = path.join(__dirname, '..');
+      try {
+        const out = execSync(`node "${path.join(__dirname, 'regression.js')}"`, { cwd: repo, env: { ...process.env, AGENT_ROOT: path.join(require('os').homedir(), 'agent-sandbox') }, timeout: 180000, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+        return clip(out.slice(-700));
+      } catch (e) { return '🔴 РЕГРЕССИЯ УПАЛА (откати изменение!):\n' + String((e.stdout && e.stdout.toString()) || e.message).slice(-700); }
+    },
+  },
   rag_search: {
     safe: true,
     schema: { type: 'object', properties: { query: { type: 'string' }, scope: { type: 'string', description: 'work|personal|agent|trading|principles (опц.)' } }, required: ['query'] },
