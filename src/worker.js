@@ -15,7 +15,7 @@ const { version } = require('./version');
 // VRAM узла (GB) для heartbeat: только NVIDIA dGPU через nvidia-smi; иначе null (не определяем).
 function detectVram() {
   try {
-    const out = execSync('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits', { stdio: ['ignore', 'pipe', 'ignore'] })
+    const out = execSync('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits', { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
       .toString().split('\n')[0].trim();
     const mib = parseInt(out, 10);
     if (Number.isFinite(mib) && mib > 0) return Math.round(mib / 1024);
