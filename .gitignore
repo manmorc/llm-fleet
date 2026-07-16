@@ -9,3 +9,8 @@ npm-debug.log*
 rag/node_modules/
 rag/package-lock.json
 .rag/
+
+# Приватное содержимое владельца (торговые детали) — ТОЛЬКО локально, в репо не класть.
+# Держалось вне репо тем, что их не добавляли вручную; один 'git add -A' это снёс — теперь в .gitignore.
+agent/BENCHMARK.md
+agent/experiment-judgment.js
