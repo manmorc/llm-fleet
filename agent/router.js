@@ -61,6 +61,10 @@ async function runAgentAuto(task, { model = 'gemma4:latest', facts, maxSteps = 8
   let effTask = task;
   let needsFacts = false;
   if (cls === 'disposition') opts.skeptic = true;
+  // structure (распарсить/извлечь/посчитать тулзой) — думать нечего, черновик там чистые накладные.
+  // Замерено: выключение думалки даёт 3.3× (6с vs 20с) и НЕ ломает tool_calls (тот же вызов, 1с vs 2с).
+  // Только здесь: на многошаговом счёте без черновика модель врёт уверенно (552 вместо 506 за 0с).
+  else if (cls === 'structure') opts.noThink = true;
   else if (cls === 'reasoning') effTask = String(task) + '\n\n(Рассуждай пошагово, разбери допущения, потом финальный вывод.)';
   else if (cls === 'knowledge') {
     opts.skeptic = true; // знание×диспозиция: факт+скептик

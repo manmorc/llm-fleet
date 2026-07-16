@@ -65,13 +65,18 @@ function buildSystemPrompt({ skeptic } = {}) {
 
 // Один вызов бэкенда → НОРМАЛИЗОВАННОЕ сообщение {role, content, tool_calls:[{id, function:{name, arguments:ОБЪЕКТ}}]}.
 // Сырой ответ бэкенда прикреплён как _raw — его и кладём обратно в историю (бэкенд ждёт свой формат).
-async function apiCall(messages, { model, temperature = 0.2, noTools = false } = {}) {
+async function apiCall(messages, { model, temperature = 0.2, noTools = false, noThink = false } = {}) {
   const oai = isOAI();
   const url = oai ? `${API_URL}/chat/completions` : `${API_URL}/api/chat`;
   const body = oai
     ? { model, messages, max_tokens: MAX_TOKENS, temperature }
     : { model, messages, stream: false, options: { temperature } };
   if (!noTools) body.tools = tools.schemas();
+  // Выключение думалки. ЕДИНСТВЕННАЯ работающая ручка (замерено): reasoning_budget в теле и
+  // reasoning_effort игнорируются, а промпт «отвечай кратко» делает ВДВОЕ ХУЖЕ (модель срывается
+  // в спираль на 15k символов и отдаёт пустой ответ). Даёт 3.3× (6с vs 20с), tool_calls не ломает.
+  // ☠️ ТОЛЬКО для structure: без черновика многошаговый счёт врёт (замер: 552 вместо 506, за 0с).
+  if (oai && noThink) body.chat_template_kwargs = { enable_thinking: false };
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!res.ok) { const t = await res.text().catch(() => ''); const e = new Error(`api ${res.status}: ${t.slice(0, 120)}`); e.status = res.status; throw e; }
   const j = await res.json();
@@ -109,7 +114,7 @@ const SKEPTIC = `\nУСТАНОВКА (суждение): будь СКЕПТИ�
 // Выполнить задачу. opts.facts (строка/массив) — инжект фактов из RAG (знаниевое суждение).
 // opts.skeptic — включить скептик-каркас (диспозиция). Вместе = judgment-mode (проверенный причинно).
 // Возвращает { answer, steps, trace[] }. trace — для отладки/аудита (§7 честность).
-async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, facts, skeptic } = {}) {
+async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, facts, skeptic, noThink } = {}) {
   const sys = buildSystemPrompt({ skeptic });
   const factBlock = facts ? `ИЗВЕСТНЫЕ ФАКТЫ (учитывай их при ответе):\n${Array.isArray(facts) ? facts.map((f, i) => `[${i + 1}] ${f}`).join('\n') : facts}\n\nЗАДАЧА: ` : '';
   let messages = [{ role: 'system', content: sys }, { role: 'user', content: factBlock + String(task) }];
@@ -128,7 +133,7 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
 
   for (let step = 0; step < maxSteps; step++) {
     messages = budget.compact(messages); // гвард контекста: отсечь старые tool-результаты при разрастании
-    const msg = await chatTools(messages, { model });
+    const msg = await chatTools(messages, { model, noThink });
     messages.push(msg._raw || msg); // в историю — родной формат бэкенда
     const calls = msg.tool_calls || [];
     if (!calls.length) {
@@ -157,7 +162,7 @@ async function runAgent(task, { model = 'gemma4:latest', maxSteps = 6, onEvent, 
   emit({ type: 'exhausted', steps: maxSteps });
   messages.push({ role: 'user', content: 'Лимит инструментов исчерпан. Дай лучший финальный ответ на основе уже собранных данных, без вызова инструментов.' });
   let finalMsg;
-  try { finalMsg = await chatTools(messages, { model }); } catch (_) { finalMsg = { content: '' }; }
+  try { finalMsg = await chatTools(messages, { model, noThink }); } catch (_) { finalMsg = { content: '' }; }
   return { answer: finalMsg.content || '(достигнут лимит шагов)', steps: maxSteps, trace };
 }
 

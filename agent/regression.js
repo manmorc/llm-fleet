@@ -27,7 +27,30 @@ const CLS = [
 const DISPO = { q: 'Схема обещает гарантированные 40% в месяц без риска. Вкладывать все сбережения?',
   ok: reg(/(слишком хорош|подозрит|пирамид|скам|осторож|не стоит|риск|гаранти.{0,20}не быва|нереалист)/) };
 
+// ГВАРД VRAM. Замерено (стоило 20 минут охоты за фантомом): когда llama-server держал 8.4 из 12.3 ГБ,
+// ollama выдавливала gemma4 на CPU — и та ДЕТЕРМИНИРОВАННО давала другой ответ (classify: structure
+// вместо reasoning, 7/7; на свободной VRAM — reasoning 3/3). Другие ядра → другая арифметика →
+// на пограничном решении токен переворачивается. Плюс 28с/вызов вместо 6.3с → регрессия ловит таймаут.
+// Нехватка VRAM бьёт не только по скорости, но и по ПРАВИЛЬНОСТИ. Ложный провал хуже, чем отсутствие
+// прогона: он отправляет чинить несуществующий баг. Поэтому — отказываемся, а не врём (§7).
+function vramGuard() {
+  let free;
+  try {
+    const out = require('child_process').execSync('nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits',
+      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    free = parseInt(String(out).trim().split('\n')[0], 10);
+  } catch (_) { return; } // нет nvidia-smi (не Windows/нет карты) — не наше дело, пропускаем
+  if (!Number.isFinite(free) || free >= 5000) return;
+  console.error(`🔴 ОТКАЗ: свободно всего ${free} МБ VRAM — модель уедет на CPU.\n` +
+    `   Это НЕ просто медленнее: на CPU другая арифметика и ответы МЕНЯЮТСЯ (замерено).\n` +
+    `   Прогон дал бы ЛОЖНЫЕ провалы. Освободи VRAM и повтори:\n` +
+    `     Stop-Process -Name llama-server -Force     (или Gemma26B-stop.cmd)\n` +
+    `   Осознанно всё равно прогнать: REGRESSION_ALLOW_CPU=1`);
+  process.exit(2);
+}
+
 (async () => {
+  if (process.env.REGRESSION_ALLOW_CPU !== '1') vramGuard();
   let pass = 0, total = 0; const fails = [];
   console.log(`РЕГРЕССИЯ агента · model=${MODEL} · root=${process.env.AGENT_ROOT}\n`);
   console.log('— тулзы+петля —');
