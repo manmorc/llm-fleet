@@ -21,8 +21,25 @@ const MODEL_FILE = process.env.LLAMA_MODEL_FILE || path.join(os.homedir(), '.lms
 const NCPUMOE = process.env.LLAMA_N_CPU_MOE || '24';
 const CTX = process.env.LLAMA_CTX || '131072';
 const AUTOSTART = process.env.LLAMA_AUTOSTART !== '0';   // 0 = не поднимать самим (CI/чужая машина)
+// Файл «последней активности» — ОБЩИЙ между процессами (воркер/агент/чат пишут, watchdog читает).
+// Так простой детектируется надёжно: ensure() зовётся перед КАЖДЫМ запросом → штамп не пропустит ни один.
+const ACTIVITY_FILE = process.env.LLAMA_ACTIVITY_FILE || path.join(os.homedir(), '.agent-bus', 'llama.active');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function touchActivity() { try { fs.writeFileSync(ACTIVITY_FILE, String(Date.now())); } catch (_) {} }
+function lastActivity() { try { return parseInt(fs.readFileSync(ACTIVITY_FILE, 'utf8'), 10) || 0; } catch (_) { return 0; } }
+
+// Занят ли сервер прямо сейчас (какой-то слот генерирует) — чтобы watchdog НЕ убил модель на лету.
+// /slots доступен без флагов; is_processing:true = идёт генерация.
+async function slotsBusy() {
+  try {
+    const res = await fetch(`${BASE}/slots`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return false;
+    const slots = await res.json();
+    return Array.isArray(slots) && slots.some((s) => s && s.is_processing);
+  } catch (_) { return false; }
+}
 
 // Готовность — ТОЛЬКО реальной генерацией. /v1/models отвечает ДО загрузки модели, а curl без -f
 // возвращает 0 даже на 503 «Loading model» → обе проверки дают ложную «готовность» (BENCHMARK, грабли 3-4).
@@ -52,6 +69,7 @@ let inFlight = null;      // один подъём на процесс: пара
 let serverPid = null;     // pid НАШЕГО llama-server (для точного fast-fail и защиты от дубль-спавна)
 
 async function ensure({ log = () => {} } = {}) {
+  touchActivity();   // любой запрос = активность (сброс idle-таймера watchdog'а), даже если модель уже тёплая
   if (await probe(4000)) return true;
   if (!AUTOSTART) throw new Error(`модель не отвечает на ${BASE} и LLAMA_AUTOSTART=0`);
   if (inFlight) return inFlight;
@@ -87,8 +105,8 @@ async function ensure({ log = () => {} } = {}) {
 }
 
 function stop() {
-  try { execSync('taskkill /F /IM llama-server.exe', { stdio: 'ignore', windowsHide: true }); return true; }
+  try { execSync('taskkill /F /IM llama-server.exe', { stdio: 'ignore', windowsHide: true }); serverPid = null; return true; }
   catch (_) { return false; }
 }
 
-module.exports = { ensure, probe, stop, BASE, ALIAS };
+module.exports = { ensure, probe, stop, slotsBusy, lastActivity, touchActivity, BASE, ALIAS };

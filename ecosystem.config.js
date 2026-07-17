@@ -46,5 +46,9 @@ module.exports = {
         AGENT_SUPERVISOR: process.env.AGENT_SUPERVISOR || L.AGENT_SUPERVISOR || 'deny', // read-only обкатка
         AGENT_ROOT: path.join(HOME, 'agent-sandbox'),
       } },
+    // 4) idle-watchdog: гасит gemma-26b на простое, освобождает VRAM (загрузка по требованию — в server.js).
+    //    Data-cron ВНУТРИ сервиса: Claude НЕ зовёт, лимиты не тратит (PRINCIPLES §9). idle-таймаут env.
+    { ...common, name: 'llama-watchdog', script: 'agent/llama-watchdog.js',
+      env: { LLAMA_IDLE_MS: process.env.LLAMA_IDLE_MS || L.LLAMA_IDLE_MS || String(10 * 60 * 1000) } },
   ],
 };
