@@ -13,7 +13,17 @@ const MAX_OUT = 8000; // отсечка вывода тула, чтобы не �
 
 function safePath(p) {
   const r = path.resolve(ROOT, p || '.');
+  // 1) Лексическая проверка (быстрая, ловит ../).
   if (r !== ROOT && !r.startsWith(ROOT + path.sep)) throw new Error(`путь вне AGENT_ROOT: ${p}`);
+  // 2) Резолв СИМЛИНКОВ: ссылка внутри ROOT может указывать НАРУЖУ, а лексика этого не видит.
+  //    Файл может ещё не существовать (write_file создаёт новый) → резолвим ближайшего существующего предка.
+  let realRoot; try { realRoot = fs.realpathSync(ROOT); } catch (_) { return r; } // нет ROOT — лексики достаточно
+  let probe = r, real;
+  for (;;) {
+    try { real = fs.realpathSync(probe); break; }
+    catch (_) { const up = path.dirname(probe); if (up === probe) { real = r; break; } probe = up; }
+  }
+  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) throw new Error(`путь вне AGENT_ROOT (симлинк наружу?): ${p}`);
   return r;
 }
 function clip(s) { s = String(s); return s.length > MAX_OUT ? s.slice(0, MAX_OUT) + `\n…[обрезано, всего ${s.length} симв.]` : s; }
