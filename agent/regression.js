@@ -53,10 +53,28 @@ function vramGuard() {
   process.exit(2);
 }
 
+// Детерминированные проверки ПРЕДОХРАНИТЕЛЕЙ (без модели): фиксируют исправленные баги, чтобы они
+// не вернулись, и доказывают, что guardrails агента держат (лестница доверия). Быстрые, не флакают.
+// Все — safe-тулзы (исполняются напрямую), поэтому надзор/риск-флаг не нужны.
+const tools = require('./tools');
+async function throws(name, args) { try { await tools.exec(name, args); return false; } catch (_) { return true; } }
+const SAFETY = [
+  { id: 'calc-верно', run: async () => Math.abs(parseFloat(await tools.exec('calc', { expr: '(1+0.05)^3' })) - 1.157625) < 1e-6 },
+  { id: 'calc-инъекция-блок', run: () => throws('calc', { expr: 'process.exit(1)' }) },
+  { id: 'ssrf-публичный-100.20-блок', run: () => throws('http_get', { url: 'http://100.20.1.1/' }) },
+  { id: 'песочница-escape-блок', run: () => throws('read_file', { file: '../../../../Windows/System32/drivers/etc/hosts' }) },
+];
+
 (async () => {
   if (process.env.REGRESSION_ALLOW_CPU !== '1') vramGuard();
   let pass = 0, total = 0; const fails = [];
   console.log(`РЕГРЕССИЯ агента · model=${MODEL} · root=${process.env.AGENT_ROOT}\n`);
+  console.log('— предохранители (детерминированно) —');
+  for (const s of SAFETY) {
+    total++; let ok = false; try { ok = await s.run(); } catch (_) { ok = false; }
+    if (ok) pass++; else fails.push(s.id);
+    console.log(`  ${ok ? '✅' : '❌'} ${s.id}`);
+  }
   console.log('— тулзы+петля —');
   for (const t of TOOLS) {
     total++; let a = ''; try { a = (await runAgent(t.q, { model: MODEL, maxSteps: 6 })).answer; } catch (e) { a = 'ERR:' + e.message; }
