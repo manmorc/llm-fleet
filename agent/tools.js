@@ -91,9 +91,15 @@ const REGISTRY = {
     description: 'HTTP GET к localhost/tailnet (напр. локальный API). Внешние хосты запрещены.',
     run: async ({ url }) => {
       const u = new URL(url);
-      const ok = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname.startsWith('100.') || u.hostname.endsWith('.ts.net');
+      // Tailnet CGNAT — это 100.64.0.0/10 (второй октет 64..127), а НЕ весь 100.0.0.0/8:
+      // startsWith('100.') пускал бы публичные адреса вроде 100.20.x.x (AWS). Проверяем диапазон.
+      const m = u.hostname.match(/^100\.(\d+)\./);
+      const isTailnet = (m && +m[1] >= 64 && +m[1] <= 127) || u.hostname.endsWith('.ts.net');
+      const ok = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || isTailnet;
       if (!ok) throw new Error(`хост запрещён: ${u.hostname} (только localhost/tailnet)`);
-      const res = await fetch(url);
+      // redirect:'error' — иначе разрешённый localhost мог 302-редиректить на внешний хост,
+      // и мы бы вытащили его тело в обход allow-листа (проверяется только исходный hostname).
+      const res = await fetch(url, { redirect: 'error' });
       return clip(`[${res.status}] ` + (await res.text()));
     },
   },
@@ -132,7 +138,14 @@ const REGISTRY = {
     safe: false,
     schema: { type: 'object', properties: { file: { type: 'string' }, content: { type: 'string' }, purpose: { type: 'string', description: 'Короткая цель действия (для надзора)' } }, required: ['file', 'content'] },
     description: 'Записать файл (в пределах AGENT_ROOT). РИСКОВЫЙ — требует AGENT_ALLOW_RISKY=1. Укажи purpose.',
-    run: ({ file, content }) => { fs.writeFileSync(safePath(file), String(content)); return `записано ${file} (${content.length} симв.)`; },
+    run: ({ file, content }) => {
+      // content ОБЯЗАН быть строкой ДО записи. Иначе: модель обрывает tool-call на max_tokens →
+      // safeJson даёт {} → content=undefined → String(undefined)='undefined' затирал бы файл (в self-dev —
+      // исходник самого агента), и только ПОТОМ падал на content.length. Проверяем до записи, не после.
+      if (typeof content !== 'string') throw new Error('write_file: content отсутствует или не строка (вероятно, tool-call оборван) — запись отменена');
+      fs.writeFileSync(safePath(file), content);
+      return `записано ${file} (${content.length} симв.)`;
+    },
   },
   shell: {
     safe: false,

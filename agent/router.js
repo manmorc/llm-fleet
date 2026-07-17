@@ -40,8 +40,11 @@ async function reason(task, { model = REASON_MODEL } = {}) {
 // правилу, которое надо помнить.
 async function classify(task, { model = DEFAULT_MODEL } = {}) {
   try {
+    // noThink: json_object-грамматика и так не даёт модели эмитить <think> — оставлять думалку «включённой»
+    // значит ловить конфликт (сервер эмитит мысли → ломает грамматику ЛИБО грамматика душит рассуждение).
+    // Классификация в 4 корзины few-shot-промптом думалки не требует. Явно выключаем — детерминированно и без конфликта.
     const m = await chatTools([{ role: 'system', content: CLS_SYS }, { role: 'user', content: String(task).slice(0, 2000) }],
-      { model, temperature: 0, json: true, noTools: true });
+      { model, temperature: 0, json: true, noTools: true, noThink: true });
     const cls = JSON.parse(m.content || '{}').class;
     return ['reasoning', 'knowledge', 'disposition', 'structure'].includes(cls) ? cls : 'structure';
   } catch (_) { return 'structure'; }

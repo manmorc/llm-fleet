@@ -28,7 +28,9 @@ const HARD_DENY = [
   /(>|>>|Out-File|Set-Content|Add-Content|echo[^\n]*>)[^\n]*(\.bashrc|\.zshrc|\.profile|\.bash_profile|\.zprofile|profile\.ps1|sitecustomize|conftest\.py|\.git[\/\\]hooks|autostart|startup)/i,
 ];
 
-fs.mkdirSync(path.dirname(AUDIT), { recursive: true });
+// Не роняем require целиком, если AGENT_AUDIT указывает в неписуемое место: audit() уже обёрнут
+// в try/catch, эта строка — нет, и падала бы при импорте supervisor из tools.exec, срывая весь вызов.
+try { fs.mkdirSync(path.dirname(AUDIT), { recursive: true }); } catch (_) {}
 
 function audit(entry) {
   try { fs.appendFileSync(AUDIT, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n'); } catch (_) {}

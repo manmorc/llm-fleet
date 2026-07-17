@@ -28,7 +28,12 @@ function tierFor(model, envTier) {
 const QUEUE_PREFIX = 'llm';
 function queueFor(tier) { return `${QUEUE_PREFIX}:${tier}`; }  // человекочитаемое полное имя
 
-const model = process.env.MODEL || 'qwen2.5:7b';
+// Дефолт модели зависит от бэкенда: на openai-ноде (llama-server) — gemma26b, иначе ollama-модель.
+// Иначе на desktop без явного MODEL воркер слал бы model:'qwen2.5:7b' — llama-server игнорирует имя
+// и отдаёт загруженную gemma (тихо не та модель), а heartbeat рекламировал бы флоту qwen2.5:7b.
+// Согласовано с loop.js (там тот же принцип).
+const _backend = process.env.LLM_BACKEND || 'ollama';
+const model = process.env.MODEL || (_backend === 'openai' ? 'gemma26b' : 'qwen2.5:7b');
 const tier  = tierFor(model, process.env.TIER);
 
 // QUEUE — DEPRECATED явный override (старая одиночная llm-tasks без префикса). По умолчанию — очередь тира.

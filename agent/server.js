@@ -37,19 +37,30 @@ async function probe(timeoutMs = 8000) {
   } catch (_) { return false; }
 }
 
-function alive() {
+// Жив ли КОНКРЕТНЫЙ pid (наш спавн), а не «любой llama-server.exe». Глобальный матч по имени образа
+// маскировал смерть нашего процесса, если рядом есть чужой llama-server: fast-fail не срабатывал и
+// мы ждали все 120 с вместо мгновенного падения.
+function pidAlive(pid) {
+  if (!pid) return false;
   try {
-    const out = execSync('tasklist /FI "IMAGENAME eq llama-server.exe" /NH', { encoding: 'utf8', windowsHide: true });
-    return /llama-server\.exe/i.test(out);
+    const out = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { encoding: 'utf8', windowsHide: true });
+    return new RegExp(`\\b${pid}\\b`).test(out);
   } catch (_) { return false; }
 }
 
-let inFlight = null;   // один подъём на процесс: параллельные вызовы ждут его же, а не плодят серверы
+let inFlight = null;      // один подъём на процесс: параллельные вызовы ждут его же, а не плодят серверы
+let serverPid = null;     // pid НАШЕГО llama-server (для точного fast-fail и защиты от дубль-спавна)
 
 async function ensure({ log = () => {} } = {}) {
   if (await probe(4000)) return true;
   if (!AUTOSTART) throw new Error(`модель не отвечает на ${BASE} и LLAMA_AUTOSTART=0`);
   if (inFlight) return inFlight;
+  // Сервер поднят нами и жив, но probe не ответил за 4 с → он ЗАГРУЖАЕТСЯ или ЗАНЯТ генерацией,
+  // а не умер. Спавнить второй на тот же порт нельзя (не забиндится и умрёт) — ждём этот, дольше.
+  if (pidAlive(serverPid)) {
+    for (let i = 0; i < 30 && pidAlive(serverPid); i++) { if (await probe(8000)) return true; await sleep(1000); }
+    if (await probe(8000)) return true;
+  }
   inFlight = (async () => {
     if (!fs.existsSync(EXE)) throw new Error(`нет llama-server: ${EXE}`);
     if (!fs.existsSync(MODEL_FILE)) throw new Error(`нет файла модели: ${MODEL_FILE}`);
@@ -57,11 +68,17 @@ async function ensure({ log = () => {} } = {}) {
     const args = ['-m', MODEL_FILE, '--n-cpu-moe', NCPUMOE, '--no-mmap', '-ngl', '99', '-c', CTX,
       '--host', '127.0.0.1', '--port', PORT, '-a', ALIAS, '--jinja'];
     const p = spawn(EXE, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    // Без 'error'-листенера асинхронный сбой spawn (EACCES, AV-карантин .exe, битый бинарь) Node бросает
+    // как uncaught → падает ВЕСЬ воркер/агент, а не только этот запрос. Ловим и превращаем в обычную ошибку.
+    let spawnErr = null;
+    p.on('error', (e) => { spawnErr = e; });
+    serverPid = p.pid;
     p.unref();
     for (let i = 0; i < 60; i++) {
       await sleep(2000);
-      // Дохлый процесс — падаем сразу, а не крутим цикл до посинения (эту грабку уже ловили).
-      if (!alive()) throw new Error('llama-server умер при загрузке (проверь путь к модели / VRAM)');
+      if (spawnErr) throw new Error(`spawn llama-server не удался: ${spawnErr.message}`);
+      // Дохлый ИМЕННО НАШ процесс — падаем сразу (по pid, не по имени образа).
+      if (!pidAlive(serverPid)) throw new Error('llama-server умер при загрузке (проверь путь к модели / VRAM)');
       if (await probe()) { log(`${ALIAS} готова за ~${(i + 1) * 2} с`); return true; }
     }
     throw new Error('llama-server не поднялся за 120 с');
@@ -74,4 +91,4 @@ function stop() {
   catch (_) { return false; }
 }
 
-module.exports = { ensure, probe, stop, alive, BASE, ALIAS };
+module.exports = { ensure, probe, stop, BASE, ALIAS };
