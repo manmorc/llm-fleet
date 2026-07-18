@@ -24,11 +24,21 @@ const AUTOSTART = process.env.LLAMA_AUTOSTART !== '0';   // 0 = не подни�
 // Файл «последней активности» — ОБЩИЙ между процессами (воркер/агент/чат пишут, watchdog читает).
 // Так простой детектируется надёжно: ensure() зовётся перед КАЖДЫМ запросом → штамп не пропустит ни один.
 const ACTIVITY_FILE = process.env.LLAMA_ACTIVITY_FILE || path.join(os.homedir(), '.agent-bus', 'llama.active');
+// Lock загрузки: пока он свежий, watchdog НЕ гасит модель. Закрывает гонку «taskkill /IM убивает
+// llama-server, который потребитель СЕЙЧАС спавнит под запрос» → та самая «умер при загрузке» на границе часа.
+const LOCK_FILE = process.env.LLAMA_LOCK_FILE || path.join(os.homedir(), '.agent-bus', 'llama.loading');
+// stderr llama-server (перезаписывается на каждый спавн) — чтобы смерть при загрузке была ДИАГНОСТИРУЕМА,
+// а не проглочена stdio:'ignore' (из-за чего первопричину инцидента 05:00 пришлось воспроизводить вручную).
+const SERVER_LOG = process.env.LLAMA_SERVER_LOG || path.join(os.homedir(), '.agent-bus', 'llama-server.err.log');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function touchActivity() { try { fs.writeFileSync(ACTIVITY_FILE, String(Date.now())); } catch (_) {} }
 function lastActivity() { try { return parseInt(fs.readFileSync(ACTIVITY_FILE, 'utf8'), 10) || 0; } catch (_) { return 0; } }
+function setLock() { try { fs.writeFileSync(LOCK_FILE, String(Date.now())); } catch (_) {} }
+function clearLock() { try { fs.unlinkSync(LOCK_FILE); } catch (_) {} }
+// Идёт ли загрузка прямо сейчас (lock свежий)? Watchdog проверяет ПЕРЕД stop().
+function loadingInProgress(maxAgeMs = 180000) { try { return Date.now() - (parseInt(fs.readFileSync(LOCK_FILE, 'utf8'), 10) || 0) < maxAgeMs; } catch (_) { return false; } }
 
 // Занят ли сервер прямо сейчас (какой-то слот генерирует) — чтобы watchdog НЕ убил модель на лету.
 // /slots доступен без флагов; is_processing:true = идёт генерация.
@@ -82,25 +92,36 @@ async function ensure({ log = () => {} } = {}) {
   inFlight = (async () => {
     if (!fs.existsSync(EXE)) throw new Error(`нет llama-server: ${EXE}`);
     if (!fs.existsSync(MODEL_FILE)) throw new Error(`нет файла модели: ${MODEL_FILE}`);
-    log(`поднимаю ${ALIAS} (n-cpu-moe=${NCPUMOE}, ctx=${CTX})… первая загрузка ~15 с`);
     const args = ['-m', MODEL_FILE, '--n-cpu-moe', NCPUMOE, '--no-mmap', '-ngl', '99', '-c', CTX,
       '--host', '127.0.0.1', '--port', PORT, '-a', ALIAS, '--jinja'];
-    const p = spawn(EXE, args, { detached: true, stdio: 'ignore', windowsHide: true });
-    // Без 'error'-листенера асинхронный сбой spawn (EACCES, AV-карантин .exe, битый бинарь) Node бросает
-    // как uncaught → падает ВЕСЬ воркер/агент, а не только этот запрос. Ловим и превращаем в обычную ошибку.
-    let spawnErr = null;
-    p.on('error', (e) => { spawnErr = e; });
-    serverPid = p.pid;
-    p.unref();
-    for (let i = 0; i < 60; i++) {
-      await sleep(2000);
-      if (spawnErr) throw new Error(`spawn llama-server не удался: ${spawnErr.message}`);
-      // Дохлый ИМЕННО НАШ процесс — падаем сразу (по pid, не по имени образа).
-      if (!pidAlive(serverPid)) throw new Error('llama-server умер при загрузке (проверь путь к модели / VRAM)');
-      if (await probe()) { log(`${ALIAS} готова за ~${(i + 1) * 2} с`); return true; }
+    // Ретрай: если процесс умер на загрузке (напр. чужой taskkill /IM зацепил наш спавн в гонке),
+    // пробуем ещё раз, а не роняем запрос. Обновляем lock всю загрузку — watchdog не тронет.
+    let lastErr;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      setLock();
+      log(`поднимаю ${ALIAS} (n-cpu-moe=${NCPUMOE}, ctx=${CTX})… попытка ${attempt}, ~15 с`);
+      let errFd; try { errFd = fs.openSync(SERVER_LOG, 'w'); } catch (_) { errFd = 'ignore'; }
+      const p = spawn(EXE, args, { detached: true, stdio: ['ignore', errFd, errFd], windowsHide: true });
+      let spawnErr = null;
+      p.on('error', (e) => { spawnErr = e; });   // иначе async-сбой spawn = uncaught = падает весь процесс
+      serverPid = p.pid;
+      p.unref();
+      try { if (typeof errFd === 'number') fs.closeSync(errFd); } catch (_) {}
+      let died = false;
+      for (let i = 0; i < 60; i++) {
+        await sleep(2000);
+        setLock();   // держим lock свежим всю загрузку (иначе watchdog решит, что простой, и убьёт)
+        if (spawnErr) { lastErr = new Error(`spawn: ${spawnErr.message}`); died = true; break; }
+        if (!pidAlive(serverPid)) { lastErr = new Error('llama-server умер при загрузке'); died = true; break; }
+        if (await probe()) { log(`${ALIAS} готова за ~${(i + 1) * 2} с (попытка ${attempt})`); return true; }
+      }
+      if (!died) { lastErr = new Error('llama-server не поднялся за 120 с'); break; } // таймаут — не ретраим
+      await sleep(2000); // дать VRAM освободиться перед повтором
     }
-    throw new Error('llama-server не поднялся за 120 с');
-  })().finally(() => { inFlight = null; });
+    // приложим хвост stderr llama-server — чтобы причина смерти была видна сразу
+    let tail = ''; try { tail = fs.readFileSync(SERVER_LOG, 'utf8').split(/\r?\n/).filter(Boolean).slice(-3).join(' | '); } catch (_) {}
+    throw new Error(`${lastErr ? lastErr.message : 'load fail'}${tail ? ' :: llama: ' + tail : ''}`);
+  })().finally(() => { inFlight = null; clearLock(); });
   return inFlight;
 }
 
@@ -109,4 +130,4 @@ function stop() {
   catch (_) { return false; }
 }
 
-module.exports = { ensure, probe, stop, slotsBusy, lastActivity, touchActivity, BASE, ALIAS };
+module.exports = { ensure, probe, stop, slotsBusy, lastActivity, touchActivity, loadingInProgress, BASE, ALIAS };

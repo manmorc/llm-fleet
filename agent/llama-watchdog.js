@@ -26,6 +26,7 @@ async function tick() {
     if (!up) { if (!downSince) { downSince = Date.now(); log('модель выгружена (VRAM свободна), жду запросов'); } return; }
     downSince = null;
     if (Date.now() - server.lastActivity() < IDLE_MS) return;   // ещё недавно был запрос
+    if (server.loadingInProgress()) return;                      // потребитель СЕЙЧАС грузит модель — не убить спавн
     if (await server.slotsBusy()) return;                        // прямо сейчас генерирует — не трогаем
     // Двойная проверка активности ПОСЛЕ slotsBusy: ensure() штампует активность ПЕРЕД запросом, так что
     // запрос, влетевший за время проверки слотов, уже обновил файл → не гасим (закрываем гонку stop-vs-request).
