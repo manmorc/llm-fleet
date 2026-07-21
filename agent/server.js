@@ -92,8 +92,14 @@ async function ensure({ log = () => {} } = {}) {
   inFlight = (async () => {
     if (!fs.existsSync(EXE)) throw new Error(`нет llama-server: ${EXE}`);
     if (!fs.existsSync(MODEL_FILE)) throw new Error(`нет файла модели: ${MODEL_FILE}`);
-    const args = ['-m', MODEL_FILE, '--n-cpu-moe', NCPUMOE, '--no-mmap', '-ngl', '99', '-c', CTX,
+    // mmap (по умолчанию) вместо --no-mmap: критично для idle-выгрузки. При --no-mmap вес модели —
+    // анонимная/залоченная под GPU host-память; жёсткий taskkill /F watchdog'а НЕ отдаёт её драйверу
+    // → утечка ~16 ГБ RAM за цикл (замерено). С mmap вес — file-backed страницы (page cache), ОС
+    // освобождает их чисто при ЛЮБОМ убийстве. Цена: ~18% скорости. Для машины 32 ГБ, которую делят
+    // с работой владельца, RAM важнее. Вернуть скорость (ценой утечки при выгрузке): LLAMA_NO_MMAP=1.
+    const args = ['-m', MODEL_FILE, '--n-cpu-moe', NCPUMOE, '-ngl', '99', '-c', CTX,
       '--host', '127.0.0.1', '--port', PORT, '-a', ALIAS, '--jinja'];
+    if (process.env.LLAMA_NO_MMAP === '1') args.splice(4, 0, '--no-mmap');
     // Ретрай: если процесс умер на загрузке (напр. чужой taskkill /IM зацепил наш спавн в гонке),
     // пробуем ещё раз, а не роняем запрос. Обновляем lock всю загрузку — watchdog не тронет.
     let lastErr;
