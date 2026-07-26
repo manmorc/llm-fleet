@@ -46,13 +46,27 @@ function unloads() {
   const w = workerStats();
   const h = pm2Health();
   const u = unloads();
-  const ok = h.bad.length === 0 && w.fail === 0;
+
+  // ПОРОГ ТРЕВОГИ. Раньше 🔴 ставился на ЛЮБОЙ единичный сбой — и первый же отчёт закричал
+  // «ошибка» из-за одного `fetch failed`, который был моим собственным перезапуском модели
+  // (101 задача, 1 сбой = 99% успеха, все процессы живы). Так уведомления быстро приучают
+  // себя игнорировать — а тогда пропустится настоящая авария.
+  // Красный — только на то, что требует ДЕЙСТВИЯ:
+  //   • процесс лежит (это всегда чинить), либо
+  //   • сбоев ≥5 за сутки, либо доля сбоев >10% (значит ломается систематически, а не разово).
+  const total = w.done + w.fail;
+  const rate = total ? w.fail / total : 0;
+  const processDown = h.bad.length > 0;
+  const systematic = w.fail >= 5 || (rate > 0.1 && w.fail > 1);
+  const ok = !processDown && !systematic;
 
   // Формат флота требует коротких строк (≤6 слов) — укладываемся в них.
   const topic = 'сводка ноды за сутки';
-  const result = ok
-    ? `задач ${w.done}, сбоев 0, выгрузок ${u}`
-    : `задач ${w.done}, сбоев ${w.fail}${h.bad.length ? ', упал ' + h.bad[0] : ''}`;
+  const result = processDown
+    ? `упал ${h.bad[0]}, задач ${w.done}`
+    : systematic
+      ? `сбоев ${w.fail} из ${total} — систематически`
+      : `задач ${w.done}, сбоев ${w.fail}, выгрузок ${u}`;
 
   if (DRY || !configured()) {
     console.log(`🤖 АГЕНТ · desktop-local · desktop-tt4i69c · ${ok ? '🟢 готово' : '🔴 ошибка'}`);
