@@ -7,7 +7,8 @@
 const os = require('os');
 const IORedis = require('ioredis');
 const keys = require('../mcp/keys');
-const { runAgentAuto } = require('./router'); // само-управляемый judgment-mode (классификация+каркас+routing)
+const { runAgentAuto } = require('./router');   // judgment-mode (классификация+каркас+routing)
+const { notify } = require('./notify');         // ТГ-отчёт в едином формате флота
 
 const URL = process.env.REDIS_URL;
 const ID = (process.env.AGENT_ID || 'desktop-local').trim();
@@ -47,9 +48,13 @@ async function handle(m) {
     const tag = `[${res.class}${res.model && /r1|deepseek/i.test(res.model) ? '·r1' : ''}${res.needsFacts ? '·нужен-RAG-факт' : ''}]`;
     await reply(from, `✅ desktop-local готово ${tag} (${res.steps} шаг):\n${res.answer}`);
     log(`✔ done → ${from} ${tag} (${res.steps} шаг)`);
+    // ТГ-отчёт в едином формате флота (как у остальных агентов). Не бросает и не блокирует:
+    // нет кред в ~/.tg/tg.env → тихо пропускается, работу агента это не ломает.
+    notify({ topic: task, result: res.answer, ok: true }).catch(() => {});
   } catch (e) {
     await reply(from, `⚠ desktop-local ошибка: ${e.message}`);
     log('✖ ERR', e.message);
+    notify({ topic: task, result: e.message, ok: false }).catch(() => {});
   }
 }
 

@@ -6,20 +6,20 @@ const budget = require('./budget');
 
 // Tool-use петля (ReAct-стиль) поверх локальной модели.
 // Пока модель зовёт тулзы — выполняем и возвращаем результат в диалог; выходим на финальном ответе
-// или по достижении maxSteps. Боевая модель — gemma-4-26b (llama-server), поднимается по требованию.
+// или по достижении maxSteps. Боевая модель — gpt-oss-20b (llama-server), поднимается по требованию.
 
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 
 // Два бэкенда: ollama (/api/chat) и OpenAI-совместимый (llama-server /v1/chat/completions).
 // Различия, которые нормализуем: путь ответа (message vs choices[0].message), аргументы tool_calls
 // (ollama=объект, OpenAI=JSON-строка), формат tool-результата (tool_name vs tool_call_id), max_tokens.
-// ДЕФОЛТ — gemma-4-26b через llama-server (openai-совместимый). Она боевая на этой машине везде:
-// чат, агент, воркер. Прежний дефолт (ollama + gemma4:latest, 8B) снят — 8B давала 0/3 на тестах
-// суждения там, где 26B даёт 3/3 (tools/moe-serve/BENCHMARK.md). ollama-путь оставлен рабочим:
-// AGENT_BACKEND=ollama — для машин флота без этой модели.
-const BACKEND = process.env.AGENT_BACKEND || 'openai';         // openai (gemma-4-26b) | ollama
+// ДЕФОЛТ — gpt-oss-20b через llama-server (openai-совместимый). Боевая на этой машине везде:
+// чат, агент, воркер. Заменила gemma-4-26b 2026-07-25: качество ПАРИТЕТ на одних задачах, но
+// 107 t/s против 40 (влезает в 12 ГБ VRAM целиком, гемма 15.6 ГБ — нет). См. agent/bench-compare.js
+// и bench-results/. ollama-путь оставлен рабочим: AGENT_BACKEND=ollama — для машин флота без модели.
+const BACKEND = process.env.AGENT_BACKEND || 'openai';         // openai (gpt-oss-20b) | ollama
 const API_URL = process.env.AGENT_API_URL || (BACKEND === 'openai' ? 'http://127.0.0.1:8081/v1' : OLLAMA);
-const DEFAULT_MODEL = process.env.MODEL || (BACKEND === 'openai' ? 'gemma26b' : 'gemma4:latest');
+const DEFAULT_MODEL = process.env.MODEL || (BACKEND === 'openai' ? 'gpt-oss' : 'gemma4:latest');
 // Автоподъём модели — только если бэкенд смотрит на ЛОКАЛЬНЫЙ llama-server (чужой endpoint не наш).
 const LOCAL_LLAMA = BACKEND === 'openai' && /^https?:\/\/(127\.0\.0\.1|localhost):/.test(API_URL);
 // max_tokens — ПОТОЛОК, а не цель: модель закончит сама (finish=stop), высокий потолок ничего не стоит.

@@ -1,12 +1,21 @@
-// Подъём локальной модели ПО ТРЕБОВАНИЮ (llama-server с gemma-4-26b).
-// Зачем: модель теперь боевая везде (чат, агент, воркер), но держать 9.5 ГБ VRAM в простое не нужно.
-// Первый же вызов поднимает сервер (~12-15 с), дальше он тёплый. Гасить — Gemma26B-stop.cmd.
+// Подъём локальной модели ПО ТРЕБОВАНИЮ (llama-server с gpt-oss-20b).
+// Зачем: модель боевая везде (чат, агент, воркер), но держать её в VRAM в простое не нужно —
+// первый вызов поднимает сервер (~9 с), дальше он тёплый, idle-watchdog гасит через 4 мин простоя.
 //
-// Пресеты замерены на этом железе (RTX 4070 Ti 12 ГБ), см. tools/moe-serve/BENCHMARK.md:
-//   --n-cpu-moe 24 @131k → 9430 МБ / 43.7 t/s (цель ~9.5-10 ГБ: на карте ещё живёт рабочий стол)
-//   --no-mmap даёт +18%; N ≥ 30 = no-op (у геммы ≤30 MoE-слоёв)
-// Думалку НЕ ограничиваем (--reasoning-budget не задаём): свип доказал, что модель сама выбирает
-// ~350 токенов, а любой потолок либо no-op, либо ломает (см. BENCHMARK.md).
+// МОДЕЛЬ: gpt-oss-20b в РОДНОМ формате MXFP4 (11.3 ГБ) — не пережатие, модель так и обучена.
+// Замерено против gemma-4-26b на одних задачах (agent/bench-compare.js, 2026-07-25):
+//   качество — ПАРИТЕТ (обе берут многошаговый счёт и скепсис к «слишком хорошим» цифрам)
+//   скорость — 107 t/s против 40 t/s, суммарно 40 с против 141 с (в 3.5 раза быстрее)
+// Причина скачка: гемма (15.6 ГБ) НЕ влезала в 12 ГБ VRAM → часть экспертов жила в RAM, и обращение
+// к ним по PCIe было главным тормозом. gpt-oss влезает ЦЕЛИКОМ в видеопамять.
+//
+// Пресет замерен здесь же (RTX 4070 Ti 12 ГБ):
+//   -ngl 99 --n-cpu-moe 2 -c 16384 → 11158 МБ / 97-107 t/s, запас VRAM ~840 МБ (рабочий стол тоже ест)
+//   без --n-cpu-moe и с ctx 32k влезает, но запас всего 58 МБ — рискованно, ловили впритык.
+// ⚠️ Контекст 16k против 131k у геммы: полный контекст в VRAM вместе с моделью не помещается.
+//   Для чата/тиков/parseSignal хватает; для длинных документов — вернуть гемму (см. откат ниже).
+// ОТКАТ на гемму одной строкой в ~/.agent-bus/fleet.env:
+//   LLAMA_ALIAS=gemma26b, LLAMA_MODEL_FILE=<путь к gemma gguf>, LLAMA_N_CPU_MOE=24, LLAMA_CTX=131072
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -14,12 +23,12 @@ const path = require('path');
 
 const PORT = process.env.LLAMA_PORT || '8081';
 const BASE = `http://127.0.0.1:${PORT}`;
-const ALIAS = process.env.LLAMA_ALIAS || 'gemma26b';
+const ALIAS = process.env.LLAMA_ALIAS || 'gpt-oss';
 const EXE = process.env.LLAMA_EXE || path.join(os.homedir(), 'tools', 'llama.cpp-b10046', 'llama-server.exe');
 const MODEL_FILE = process.env.LLAMA_MODEL_FILE || path.join(os.homedir(), '.lmstudio', 'models',
-  'lmstudio-community', 'gemma-4-26B-A4B-it-GGUF', 'gemma-4-26B-A4B-it-Q4_K_M.gguf');
-const NCPUMOE = process.env.LLAMA_N_CPU_MOE || '24';
-const CTX = process.env.LLAMA_CTX || '131072';
+  'ggml-org', 'gpt-oss-20b-GGUF', 'gpt-oss-20b-MXFP4.gguf');
+const NCPUMOE = process.env.LLAMA_N_CPU_MOE || '2';
+const CTX = process.env.LLAMA_CTX || '16384';
 const AUTOSTART = process.env.LLAMA_AUTOSTART !== '0';   // 0 = не поднимать самим (CI/чужая машина)
 // Файл «последней активности» — ОБЩИЙ между процессами (воркер/агент/чат пишут, watchdog читает).
 // Так простой детектируется надёжно: ensure() зовётся перед КАЖДЫМ запросом → штамп не пропустит ни один.

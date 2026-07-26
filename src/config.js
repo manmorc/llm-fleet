@@ -28,12 +28,12 @@ function tierFor(model, envTier) {
 const QUEUE_PREFIX = 'llm';
 function queueFor(tier) { return `${QUEUE_PREFIX}:${tier}`; }  // человекочитаемое полное имя
 
-// Дефолт модели зависит от бэкенда: на openai-ноде (llama-server) — gemma26b, иначе ollama-модель.
+// Дефолт модели зависит от бэкенда: на openai-ноде (llama-server) — gpt-oss, иначе ollama-модель.
 // Иначе на desktop без явного MODEL воркер слал бы model:'qwen2.5:7b' — llama-server игнорирует имя
-// и отдаёт загруженную gemma (тихо не та модель), а heartbeat рекламировал бы флоту qwen2.5:7b.
+// и отдаёт загруженную модель (тихо не та), а heartbeat рекламировал бы флоту qwen2.5:7b.
 // Согласовано с loop.js (там тот же принцип).
 const _backend = process.env.LLM_BACKEND || 'ollama';
-const model = process.env.MODEL || (_backend === 'openai' ? 'gemma26b' : 'qwen2.5:7b');
+const model = process.env.MODEL || (_backend === 'openai' ? 'gpt-oss' : 'qwen2.5:7b');
 const tier  = tierFor(model, process.env.TIER);
 
 // QUEUE — DEPRECATED явный override (старая одиночная llm-tasks без префикса). По умолчанию — очередь тира.
@@ -51,7 +51,7 @@ module.exports = {
   workerKeyPrefix: 'fleet:worker:',
   model,
   // Бэкенд инференса. ДЕФОЛТ 'ollama' МЕНЯТЬ НЕЛЬЗЯ: src/ — общий код флота, деплоится на все ноды,
-  // а на mac/linux крутится ollama+qwen3. Нода desktop включает openai (gemma-4-26b) через свой
+  // а на mac/linux крутится ollama+qwen3. Нода desktop включает openai (gpt-oss-20b) через свой
   // ecosystem.config.js — конфигом, а не сменой общего дефолта.
   backend:         process.env.LLM_BACKEND || 'ollama',
   llmUrl:          process.env.LLM_URL || (process.env.LLM_BACKEND === 'openai'
