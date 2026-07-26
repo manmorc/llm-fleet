@@ -14,3 +14,10 @@ rag/package-lock.json
 # Держалось вне репо тем, что их не добавляли вручную; один 'git add -A' это снёс — теперь в .gitignore.
 agent/BENCHMARK.md
 agent/experiment-judgment.js
+
+# Tailscale-сертификаты (генерятся локально tailscale cert; .key — ПРИВАТНЫЙ КЛЮЧ)
+*.ts.net.crt
+*.ts.net.key
+
+# Приватные ключи шифрования секретов (mcp/seal.js) — только локально
+*.enc.key
