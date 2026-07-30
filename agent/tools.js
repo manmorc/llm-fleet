@@ -143,6 +143,37 @@ const REGISTRY = {
       } catch (e) { return `RAG ошибка: ${e.message}`; }
     },
   },
+  // Связь с ДРУГИМИ МАШИНАМИ флота через agent-bus. Отправка подписывается Ed25519-ключом ноды,
+  // получатель видит ✓ — это и есть цепочка доверия шины. Ответ придёт асинхронно (в inbox ноды),
+  // здесь мы его НЕ ждём: агент отправляет и продолжает, ответ прочитает владелец/сессия из лога.
+  // safe: отправка сообщения — не деструктивное действие; ключ подписи наружу не уходит.
+  bus_send: {
+    safe: true,
+    schema: { type: 'object', properties: {
+      to: { type: 'string', description: 'кому: linux-prestige | mac-artyom | desktop-tt4i69c | all (broadcast)' },
+      text: { type: 'string', description: 'текст сообщения' },
+    }, required: ['to', 'text'] },
+    description: 'Написать ДРУГОЙ МАШИНЕ флота (linux-prestige, mac-artyom) или всем (all) через agent-bus. Используй, когда задача требует данных/действий с другой ноды: спросить статус, попросить факт, скоординировать работу. Ответ придёт асинхронно, здесь его не жди.',
+    run: async ({ to, text }) => {
+      const dst = String(to || '').trim();
+      if (!dst) throw new Error('нужен получатель (to)');
+      const out = execSync(
+        `node "${path.join(__dirname, '..', 'mcp', 'bus-send.js')}" ${dst} ${JSON.stringify(String(text))}`,
+        { encoding: 'utf8', timeout: 20000, windowsHide: true, cwd: path.join(__dirname, '..') });
+      return clip(out.trim() || `отправлено → ${dst}`);
+    },
+  },
+  // Кто из машин флота сейчас онлайн (presence в Redis). Нужно, чтобы агент не слал в пустоту.
+  bus_who: {
+    safe: true,
+    schema: { type: 'object', properties: {} },
+    description: 'Показать, какие машины флота сейчас онлайн (presence). Проверь перед bus_send, что адресат на связи.',
+    run: () => {
+      const out = execSync(`node "${path.join(__dirname, '..', 'mcp', 'bus-send.js')}" --who`,
+        { encoding: 'utf8', timeout: 15000, windowsHide: true, cwd: path.join(__dirname, '..') });
+      return clip(out.trim() || '(нет данных)');
+    },
+  },
   // ── РИСКОВЫЕ (за флагом) ──────────────────────────────────────────────
   write_file: {
     safe: false,

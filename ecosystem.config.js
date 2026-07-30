@@ -50,6 +50,12 @@ module.exports = {
     //    Data-cron ВНУТРИ сервиса: Claude НЕ зовёт, лимиты не тратит (PRINCIPLES §9). idle-таймаут env.
     { ...common, name: 'llama-watchdog', script: 'agent/llama-watchdog.js',
       env: { LLAMA_IDLE_MS: process.env.LLAMA_IDLE_MS || L.LLAMA_IDLE_MS || String(10 * 60 * 1000) } },
+    // 6) мост Telegram → локальный агент: пишешь боту @gaymaster3000bot — отвечает агент
+
+    //    с инструментами и памятью диалога. Long polling (машина за NAT). Только владелец.
+
+    { ...common, name: 'tg-bridge', script: 'agent/tg-bridge.js', env: {} },
+
     // 5) веб-шлюз чата: всегда жив, будит модель на первом сообщении, проксирует. Выставлен tailscale serve
     //    на https://desktop-tt4i69c.tail241f5d.ts.net/ — владелец общается с моделькой из браузера удалённо.
     { ...common, name: 'chat-gateway', script: 'agent/chat-gateway.js',

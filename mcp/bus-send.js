@@ -10,7 +10,9 @@ const URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const ID = (process.env.AGENT_ID || os.hostname()).trim();
 const to = process.argv[2];
 const text = process.argv.slice(3).join(' ');
-if (!to || !text) { console.error('usage: AGENT_ID=<id> REDIS_URL=<url> node mcp/bus-send.js <to|all> <текст>'); process.exit(1); }
+// --who: список онлайн-агентов (нужен инструменту bus_who локального агента — чтобы он не слал в пустоту).
+const WHO = to === '--who';
+if (!WHO && (!to || !text)) { console.error('usage: AGENT_ID=<id> REDIS_URL=<url> node mcp/bus-send.js <to|all> <текст>   |   node mcp/bus-send.js --who'); process.exit(1); }
 
 const PRESENCE = 'agents:presence:', INBOX = 'agents:inbox:';
 const r = new IORedis(URL, { maxRetriesPerRequest: null });
@@ -19,6 +21,11 @@ async function deliver(dst, rec) { const k = INBOX + dst; await r.rpush(k, JSON.
 
 (async () => {
   const ts = Date.now();
+  if (WHO) {
+    const list = await online();
+    console.log(list.length ? list.join(', ') : '(никого онлайн)');
+    await r.quit(); process.exit(0);
+  }
   if (to === 'all') {
     const base = { from: ID, text, kind: 'broadcast', ts }; base.sig = keys.sign(base);
     const list = (await online()).filter((x) => x !== ID);
