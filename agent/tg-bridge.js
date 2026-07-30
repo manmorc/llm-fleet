@@ -22,11 +22,18 @@ const POLL_TIMEOUT = 50;                     // сек, long polling (Telegram �
 const MAX_MSG = 3900;                        // лимит Telegram 4096 — режем с запасом
 const log = (m) => console.log(`${new Date().toISOString()} [tg-bridge] ${m}`);
 
+// ОТДЕЛЬНЫЙ бот для чата с агентом (~/.tg/tg-agent.env). Зачем отдельный: у бота может быть только
+// ОДИН потребитель getUpdates, а masterbot3000 занят отчётами флота — если опрашивать его же,
+// ноды начнут воровать апдейты друг у друга. Разные боты = разные очереди, конфликта нет.
+// Фолбэк на общий ~/.tg/tg.env — чтобы мост работал и до появления отдельных кред.
 function creds() {
-  let token = process.env.TG_TOKEN, chat = process.env.TG_CHAT;
-  if (!token || !chat) {
+  let token = process.env.TG_AGENT_TOKEN || process.env.TG_TOKEN;
+  let chat  = process.env.TG_AGENT_CHAT  || process.env.TG_CHAT;
+  const files = [path.join(os.homedir(), '.tg', 'tg-agent.env'), path.join(os.homedir(), '.tg', 'tg.env')];
+  for (const f of files) {
+    if (token && chat) break;
     try {
-      const env = fs.readFileSync(path.join(os.homedir(), '.tg', 'tg.env'), 'utf8');
+      const env = fs.readFileSync(f, 'utf8');
       for (const line of env.split(/\r?\n/)) {
         const m = line.match(/^\s*(TG_TOKEN|TG_CHAT)\s*=\s*(.+?)\s*$/);
         if (m) { if (m[1] === 'TG_TOKEN') token = token || m[2]; else chat = chat || m[2]; }
