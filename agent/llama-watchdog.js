@@ -20,19 +20,41 @@ log(`старт · idle-таймаут ${Math.round(IDLE_MS / 60000)} мин · 
 
 let downSince = null; // чтобы не спамить логом, когда модель уже выгружена
 
+// Счётчик задач сервера с прошлого тика + когда он последний раз менялся.
+// Это ВТОРОЙ, независимый от нашего Node-кода источник активности (см. server.taskCounter):
+// ловит запросы из встроенного веб-чата llama.cpp и любых прямых клиентов, которые не идут
+// через ensure() и потому не обновляют llama.active.
+let lastCounter = null;
+let lastCounterChange = Date.now();
+
 async function tick() {
   try {
     const up = await server.probe(4000);
-    if (!up) { if (!downSince) { downSince = Date.now(); log('модель выгружена (VRAM свободна), жду запросов'); } return; }
+    if (!up) {
+      if (!downSince) { downSince = Date.now(); log('модель выгружена (VRAM свободна), жду запросов'); }
+      lastCounter = null;                       // сервер лёг — счётчик обнулится при новом старте
+      return;
+    }
     downSince = null;
-    if (Date.now() - server.lastActivity() < IDLE_MS) return;   // ещё недавно был запрос
-    if (server.loadingInProgress()) return;                      // потребитель СЕЙЧАС грузит модель — не убить спавн
-    if (await server.slotsBusy()) return;                        // прямо сейчас генерирует — не трогаем
-    // Двойная проверка активности ПОСЛЕ slotsBusy: ensure() штампует активность ПЕРЕД запросом, так что
-    // запрос, влетевший за время проверки слотов, уже обновил файл → не гасим (закрываем гонку stop-vs-request).
-    const idleFor = Date.now() - server.lastActivity();
-    if (idleFor < IDLE_MS) return;
-    log(`простой ${Math.round(idleFor / 60000)} мин ≥ ${Math.round(IDLE_MS / 60000)} — гашу llama-server, освобождаю VRAM`);
+
+    // Активность по счётчику САМОГО сервера (любой источник запросов, включая встроенный UI).
+    const c = await server.taskCounter();
+    if (c !== null) {
+      if (lastCounter === null || c !== lastCounter) { lastCounter = c; lastCounterChange = Date.now(); }
+    }
+
+    // Простой = МИНИМУМ из двух независимых источников. Гасим только если ОБА молчат:
+    // (1) наш штамп llama.active (запросы через харнес), (2) счётчик задач сервера (все прочие пути).
+    // Раньше был только (1) — и watchdog убивал модель посреди чата владельца во встроенном UI.
+    const idleFor = () => Math.min(Date.now() - server.lastActivity(), Date.now() - lastCounterChange);
+
+    if (idleFor() < IDLE_MS) return;
+    if (server.loadingInProgress()) return;      // потребитель СЕЙЧАС грузит модель — не убить спавн
+    if (await server.slotsBusy()) return;        // прямо сейчас генерирует — не трогаем
+    // Двойная проверка ПОСЛЕ slotsBusy: запрос, влетевший за время проверки, уже сдвинул один из
+    // источников → не гасим (закрываем гонку stop-vs-request).
+    if (idleFor() < IDLE_MS) return;
+    log(`простой ${Math.round(idleFor() / 60000)} мин ≥ ${Math.round(IDLE_MS / 60000)} — гашу llama-server, освобождаю VRAM`);
     server.stop();
   } catch (e) { log(`tick err: ${e.message}`); }
 }

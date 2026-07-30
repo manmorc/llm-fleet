@@ -60,6 +60,22 @@ async function slotsBusy() {
   } catch (_) { return false; }
 }
 
+// Счётчик обработанных задач САМОГО llama-server (max id_task по слотам, монотонно растёт).
+// ЗАЧЕМ: файл llama.active обновляет только ensure(), т.е. запросы, идущие через НАШ Node-код.
+// Но встроенный веб-чат llama.cpp (его открывает десктопный ярлык!) и любой прямой клиент бьют
+// в :8081 НАПРЯМУЮ — мимо ensure(). Watchdog видел «простой N мин» и убивал модель ПОСРЕДИ
+// разговора владельца; тот перезапускал ярлык, и цикл повторялся («постоянно отваливалась»).
+// Этот счётчик ловит активность на уровне СЕРВЕРА — любой путь, включая встроенный UI.
+async function taskCounter() {
+  try {
+    const res = await fetch(`${BASE}/slots`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const slots = await res.json();
+    if (!Array.isArray(slots)) return null;
+    return Math.max(0, ...slots.map((s) => (s && s.id_task) || 0));
+  } catch (_) { return null; }
+}
+
 // Готовность — ТОЛЬКО реальной генерацией. /v1/models отвечает ДО загрузки модели, а curl без -f
 // возвращает 0 даже на 503 «Loading model» → обе проверки дают ложную «готовность» (BENCHMARK, грабли 3-4).
 async function probe(timeoutMs = 8000) {
@@ -145,4 +161,4 @@ function stop() {
   catch (_) { return false; }
 }
 
-module.exports = { ensure, probe, stop, slotsBusy, lastActivity, touchActivity, loadingInProgress, BASE, ALIAS };
+module.exports = { ensure, probe, stop, slotsBusy, taskCounter, lastActivity, touchActivity, loadingInProgress, BASE, ALIAS };
