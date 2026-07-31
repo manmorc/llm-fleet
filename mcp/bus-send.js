@@ -2,6 +2,23 @@
 // Подписанная отправка в agent-bus БЕЗ MCP-тула (для сессий со старым MCP, скриптов, cron).
 // Подписывает приватным ключом (~/.agent-bus/agent.key) → получатель проверит (✓).
 //   AGENT_ID=<id> REDIS_URL=<url> node mcp/bus-send.js <to|all> <текст…>
+//
+// ── ФИКС 01.08.2026: скрипт ВИС и умирал по внешнему таймауту, ТЕРЯЯ сообщения ─────────────────────
+// Симптом (desktop-tt4i69c → linux-prestige): «bus-send висит и убивается по таймауту»; часть ответов и
+// АВАРИЙНЫХ эскалаций (agent/escalate.js, таймаут 15с) молча не доезжала. Отправитель ошибки не видел и
+// считал, что доставил, — получатель не получал ничего. Классический «тихий сбой».
+// Три причины разом:
+//   1) `maxRetriesPerRequest: null` — ioredis ретраит команду БЕСКОНЕЧНО: при недоступном/медленном Redis
+//      одноразовый скрипт не падает и не завершается, а ждёт вечно;
+//   2) не было connectTimeout — установка соединения тоже могла висеть;
+//   3) `.catch()` не закрывал соединение (quit был только в happy-path) → процесс жил с открытым сокетом.
+// Лечение: конечные ретраи + таймауты + сторожевой таймер на весь процесс + НЕНУЛЕВОЙ exit-код,
+// чтобы вызывающий отличал «не доставлено» от «ок» (молчание больше не считается успехом).
+//
+// ── ВТОРАЯ ПОЛОВИНА ФИКСА (desktop-tt4i69c): таймауты лечат СИМПТОМ, а корень — ИСТОЧНИК КОНФИГА.
+// Даже с таймаутами скрипт уходил на localhost:6379 (когда REDIS_URL нет в окружении) и подписывался
+// от hostname в верхнем регистре. То есть переставал висеть, но сообщение всё равно не доезжало.
+// Оба значения теперь читаются из ~/.agent-bus/fleet.env — см. fromFleetEnv ниже.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -37,22 +54,22 @@ const text = process.argv.slice(3).join(' ');
 const WHO = to === '--who';
 if (!WHO && (!to || !text)) { console.error('usage: AGENT_ID=<id> REDIS_URL=<url> node mcp/bus-send.js <to|all> <текст>   |   node mcp/bus-send.js --who'); process.exit(1); }
 
-const PRESENCE = 'agents:presence:', INBOX = 'agents:inbox:';
-// Отказывать БЫСТРО, а не висеть: это одноразовый CLI, его зовут из эскалации с таймаутом 15с.
-// maxRetriesPerRequest:null (вечный ретрай) уместен для долгоживущего сервиса, но для скрипта
-// означает «висеть до убийства по таймауту», а вызывающий проглотит это как непонятный сбой.
-const r = new IORedis(URL, {
-  maxRetriesPerRequest: 2,
-  connectTimeout: 5000,
-  commandTimeout: 5000,          // от linux-prestige (ec78dc3): висеть могла и уже установленная команда
-  retryStrategy: (times) => (times > 3 ? null : Math.min(times * 300, 1000)),
-});
-r.on('error', (e) => { console.error('ERR redis:', e.message); process.exit(1); });
-
-// СТОРОЖ НА ВЕСЬ ПРОЦЕСС — от linux-prestige. Бюджет МЕНЬШЕ таймаута вызывающего (escalate.js = 15с),
-// чтобы МЫ успели сказать «не доставлено» с причиной, а не были убиты снаружи без диагностики.
-// Дополняет поштучные таймауты: они закрывают известные точки зависания, сторож — все остальные.
+// Общий бюджет на отправку. МЕНЬШЕ таймаута вызывающего (escalate.js = 15с), чтобы МЫ успели сказать
+// «не смог» с причиной, а не были убиты снаружи без диагностики.
 const DEADLINE_MS = Number(process.env.BUS_SEND_TIMEOUT_MS) || 10000;
+
+const PRESENCE = 'agents:presence:', INBOX = 'agents:inbox:';
+const r = new IORedis(URL, {
+  maxRetriesPerRequest: 2,      // НЕ null: одноразовой отправке нужен конечный отказ, а не вечное ожидание
+  connectTimeout: 5000,
+  commandTimeout: 5000,
+  retryStrategy: (times) => (times > 3 ? null : Math.min(times * 300, 1000)), // null = прекратить реконнект
+});
+// Ошибку НЕ обрабатываем здесь и НЕ выходим из хендлера: пусть её поймает catch ниже, который
+// закроет соединение и снимет сторожа. Иначе выход прямо из обработчика оставлял бы сокет открытым.
+r.on('error', () => {});        // без хендлера ioredis сыплет в stderr
+
+// СТОРОЖ: если всё же зависли — выходим САМИ, с кодом 1 и внятной причиной.
 const watchdog = setTimeout(() => {
   console.error(`ERR таймаут отправки ${DEADLINE_MS}мс (redis недоступен?) — сообщение НЕ доставлено`);
   try { r.disconnect(); } catch (_) {}
@@ -83,8 +100,8 @@ async function deliver(dst, rec) { const k = INBOX + dst; await r.rpush(k, JSON.
   .then(() => { clearTimeout(watchdog); return r.quit().catch(() => r.disconnect()); })
   .then(() => process.exit(0))
   .catch(async (e) => {
-    // ЧЕСТНЫЙ ПРОВАЛ (от linux-prestige): ненулевой код + причина. Раньше .catch() не закрывал
-    // соединение — процесс жил с открытым сокетом, и вызывающий не мог отличить «не доставлено» от «ок».
+    // ЧЕСТНЫЙ ПРОВАЛ: ненулевой код + причина. Раньше .catch() не закрывал соединение — процесс жил
+    // с открытым сокетом, а вызывающий не мог отличить «не доставлено» от «ок» (молчание = успех).
     clearTimeout(watchdog);
     console.error('ERR', (e && e.message) || e, '— сообщение НЕ доставлено');
     try { await r.quit(); } catch (_) { try { r.disconnect(); } catch (__) {} }
