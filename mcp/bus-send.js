@@ -88,9 +88,17 @@ async function deliver(dst, rec) { const k = INBOX + dst; await r.rpush(k, JSON.
   }
   if (to === 'all') {
     const base = { from: ID, text, kind: 'broadcast', ts }; base.sig = keys.sign(base);
-    const list = (await online()).filter((x) => x !== ID);
+    // ТОТ ЖЕ ФИКС, что linux-prestige сделал в mcp/agent-bus.js (0eb0b6a) — здесь он был пропущен.
+    // Presence — ключ с TTL 30с; он пропадает, стоит event-loop'у агента залипнуть на долгом вызове.
+    // Рассылка по присутствию уходила «→ 0 агентов: (никого)» и молча терялась, хотя агенты живы.
+    // Адресаты = РЕЕСТР известных агентов (agent-keys.json, ведёт владелец), inbox durable на неделю:
+    // спящий агент заберёт при пробуждении. Присутствие показываем справочно — кто прочтёт сразу.
+    const reg = (() => { try { return Object.keys(keys.registry() || {}).filter((k) => !k.startsWith('//')); } catch (_) { return []; } })();
+    const live = new Set(await online());
+    const list = (reg.length ? reg : [...live]).filter((x) => x !== ID);
     for (const d of list) await deliver(d, { ...base, to: d });
-    console.log(`broadcast → ${list.length}: ${list.join(', ') || '(никого)'} ${base.sig ? '(signed ✓)' : '(⚠ без ключа)'}`);
+    const seen = list.filter((x) => live.has(x)).length;
+    console.log(`broadcast → ${list.length} (онлайн сейчас ${seen}): ${list.join(', ') || '(никого)'} ${base.sig ? '(signed ✓)' : '(⚠ без ключа)'}`);
   } else {
     const rec = { from: ID, to, text, kind: 'direct', ts }; rec.sig = keys.sign(rec);
     await deliver(to, rec);
