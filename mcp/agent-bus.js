@@ -83,11 +83,23 @@ async function callTool(name, args) {
   }
   if (name === 'broadcast') {
     if (!args.text) throw new Error('нужен text');
-    const list = (await online()).filter(a => a.id !== AGENT_ID);
+    // ── ФИКС 01.08.2026: broadcast доставлял ТОЛЬКО присутствующим и молча терял сообщения ──────────
+    // Симптом: директива владельца ушла «→ 0 агент(ов): (никого)», хотя агенты были живы — presence это
+    // ключ с TTL 30с при heartbeat раз в 10с, и он ПРОПАДАЕТ, стоит event-loop'у агента заблокироваться
+    // (долгий tool-call, тяжёлый прогон, своп). Через минуту `who` показал тех же агентов онлайн.
+    // Классический «тихий сбой»: отправитель видел успешный ответ, получатели не получали ничего.
+    // Presence годится ДЛЯ ПОКАЗА, но НЕ как список доставки.
+    // Теперь адресаты = РЕЕСТР ИЗВЕСТНЫХ АГЕНТОВ (agent-keys.json — тот же, по которому проверяем подписи,
+    // ведёт владелец). Inbox durable (недельный TTL) → спящий агент заберёт своё при следующем `inbox`.
+    // Присутствие показываем справочно, чтобы было видно, кто прочитает не сразу.
+    const reg = (() => { try { return Object.keys(keys.registry() || {}).filter(k => !k.startsWith('//')); } catch (_) { return []; } })();
+    const live = new Set((await online()).map(a => a.id));
+    const targets = (reg.length ? reg : [...live]).filter(id => id !== AGENT_ID);
     const rec = { from: AGENT_ID, text: String(args.text), kind: 'broadcast', ts: Date.now() };
     rec.sig = keys.sign(rec); // canon не включает to → одна подпись валидна для всех получателей
-    for (const a of list) await deliver(a.id, { ...rec, to: a.id });
-    return `Broadcast → ${list.length} агент(ов): ${list.map(a => a.id).join(', ') || '(никого)'} : "${rec.text}"`;
+    for (const id of targets) await deliver(id, { ...rec, to: id });
+    const shown = targets.map(id => id + (live.has(id) ? '' : ' (спит — заберёт из inbox)')).join(', ');
+    return `Broadcast → ${targets.length} агент(ов): ${shown || '(реестр пуст)'} : "${rec.text}"`;
   }
   if (name === 'inbox') {
     const k = INBOX + AGENT_ID;
