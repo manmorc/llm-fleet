@@ -1,0 +1,62 @@
+[
+  {
+    "ctx": 16384,
+    "moe": 2,
+    "kv": "f16",
+    "label": "текущий 16k",
+    "ok": true,
+    "loadSec": 6.5,
+    "vramUsed": 11372,
+    "vramTotal": 12282,
+    "tps": 91.3,
+    "tok": 400
+  },
+  {
+    "ctx": 32768,
+    "moe": 2,
+    "kv": "f16",
+    "label": "32k",
+    "ok": true,
+    "loadSec": 6,
+    "vramUsed": 11772,
+    "vramTotal": 12282,
+    "tps": 98.9,
+    "tok": 350
+  },
+  {
+    "ctx": 65536,
+    "moe": 4,
+    "kv": "q8_0",
+    "label": "64k + KV q8",
+    "ok": true,
+    "loadSec": 6,
+    "vramUsed": 11032,
+    "vramTotal": 12282,
+    "tps": 74.6,
+    "tok": 266
+  },
+  {
+    "ctx": 131072,
+    "moe": 6,
+    "kv": "q8_0",
+    "label": "128k + KV q8",
+    "ok": true,
+    "loadSec": 4.5,
+    "vramUsed": 11198,
+    "vramTotal": 12282,
+    "tps": 62.3,
+    "tok": 280
+  },
+  {
+    "ctx": 131072,
+    "moe": 12,
+    "kv": "q8_0",
+    "label": "128k + KV q8, больше в RAM",
+    "ok": true,
+    "loadSec": 4.5,
+    "vramUsed": 8770,
+    "vramTotal": 12282,
+    "tps": 30.8,
+    "tok": 250
+  }
+]

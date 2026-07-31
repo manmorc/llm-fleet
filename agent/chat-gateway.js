@@ -9,11 +9,26 @@
 // Только tailnet (tailscale serve, НЕ funnel) — доступ как у шины, отдельной авторизации нет.
 const http = require('http');
 const server = require('./server');
+const budget = require('./budget');
+const { buildSystemPrompt } = require('./loop');
 
 const PORT = parseInt(process.env.GW_PORT || '8090', 10);
 const LLAMA = process.env.LLAMA_URL || 'http://127.0.0.1:8081/v1';
 const MAX_TOKENS = parseInt(process.env.GW_MAX_TOKENS || '8192', 10);  // потолок: думающей модели нужен запас
 const log = (m) => console.log(`${new Date().toISOString()} [chat-gateway] ${m}`);
+
+// 🔴 СИСТЕМНЫЙ ПРОМПТ В ВЕБ-ЧАТ. Раньше браузер слал голую историю без него, и модель отвечала
+// БЕЗ правил — в том числе без запрета выдумывать ссылки и факты. Реальное последствие (31.07.2026):
+// на просьбу «скинь фото обезьяны» пришёл правдоподобный URL, вернувший 404. Правило существовало
+// в SYSTEM_PROMPT.md, но по этому пути в модель не попадало.
+// Плюс замена messages.slice(-40): срез по КОЛИЧЕСТВУ выбрасывал самое начало, то есть системное
+// сообщение, как только история переваливала за 40. budget.compact считает ТОКЕНЫ, всегда сохраняет
+// messages[0] и режет в первую очередь объёмные результаты инструментов, а не разговор.
+async function prepare(messages) {
+  const hasSystem = messages[0] && messages[0].role === 'system';
+  const withSys = hasSystem ? messages : [{ role: 'system', content: buildSystemPrompt() }, ...messages];
+  return budget.compactAsync(withSys);   // точный счёт через /tokenize, с откатом на эвристику
+}
 
 const PAGE = `<!doctype html><html lang=ru><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
@@ -76,7 +91,7 @@ const srv = http.createServer(async (req, res) => {
         await server.ensure({ log: (m) => log(m) });
         const r = await fetch(`${LLAMA}/chat/completions`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: server.ALIAS, messages: messages.slice(-40), max_tokens: MAX_TOKENS, temperature: 0.3 }),
+          body: JSON.stringify({ model: server.ALIAS, messages: await prepare(messages), max_tokens: MAX_TOKENS, temperature: 0.3 }),
         });
         if (!r.ok) return sendJson(res, 502, { error: `модель ${r.status}` });
         const j = await r.json();

@@ -1,0 +1,166 @@
+{
+  "model": "gpt-oss",
+  "pass": 19,
+  "total": 19,
+  "pct": 100,
+  "wroteFile": 19,
+  "avgSec": 5.3,
+  "rows": [
+    {
+      "id": "off-by-one",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 4079,
+      "err": null
+    },
+    {
+      "id": "null-check",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 5471,
+      "err": null
+    },
+    {
+      "id": "sum-missing",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 4693,
+      "err": null
+    },
+    {
+      "id": "sort-numeric",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 4796,
+      "err": null
+    },
+    {
+      "id": "parse-radix",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 6709,
+      "err": null
+    },
+    {
+      "id": "dedupe",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 5655,
+      "err": null
+    },
+    {
+      "id": "clamp",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 4325,
+      "err": null
+    },
+    {
+      "id": "mod-negative",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 4984,
+      "err": null
+    },
+    {
+      "id": "empty-array",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 4861,
+      "err": null
+    },
+    {
+      "id": "missing-await",
+      "skipped": "тест зелёный до правки"
+    },
+    {
+      "id": "deep-copy",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 6597,
+      "err": null
+    },
+    {
+      "id": "validate-input",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 4460,
+      "err": null
+    },
+    {
+      "id": "default-param",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 4360,
+      "err": null
+    },
+    {
+      "id": "group-by",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 6667,
+      "err": null
+    },
+    {
+      "id": "chunk",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 5348,
+      "err": null
+    },
+    {
+      "id": "try-catch",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 4802,
+      "err": null
+    },
+    {
+      "id": "wrong-operator",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 3673,
+      "err": null
+    },
+    {
+      "id": "capitalize",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 5747,
+      "err": null
+    },
+    {
+      "id": "range",
+      "ok": true,
+      "changed": true,
+      "calls": 2,
+      "ms": 4995,
+      "err": null
+    },
+    {
+      "id": "count-words",
+      "ok": true,
+      "changed": true,
+      "calls": 3,
+      "ms": 7621,
+      "err": null
+    }
+  ]
+}

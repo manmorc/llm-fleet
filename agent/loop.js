@@ -144,7 +144,7 @@ async function runAgent(task, { model = DEFAULT_MODEL, maxSteps = 6, onEvent, fa
   }
 
   for (let step = 0; step < maxSteps; step++) {
-    messages = budget.compact(messages); // гвард контекста: отсечь старые tool-результаты при разрастании
+    messages = await budget.compactAsync(messages); // гвард контекста: ТОЧНЫЙ счёт токенов (/tokenize), дроп старых tool-результатов
     const msg = await chatTools(messages, { model, noThink });
     messages.push(msg._raw || msg); // в историю — родной формат бэкенда
     const calls = msg.tool_calls || [];
@@ -162,7 +162,14 @@ async function runAgent(task, { model = DEFAULT_MODEL, maxSteps = 6, onEvent, fa
       let result;
       if (n > 2) {
         // третий+ идентичный вызов — почти наверняка зацикливание; не жжём инференс, направляем модель
-        result = `ПОВТОР: этот вызов уже сделан ${n - 1} раз(а) с тем же результатом. НЕ повторяй — используй полученные данные и дай финальный ответ.`;
+        // ⚠️ ФОРМУЛИРОВКА ВАЖНА. Раньше здесь было «дай финальный ответ» — и это уводило модель не туда
+        // на задачах, где нужно ДЕЙСТВИЕ: агент читал файл, грепал, читал снова, ловил эту подсказку,
+        // послушно шёл «отвечать» и заканчивал словами «не смог сформулировать ответ», не тронув файл
+        // (диагностика 31.07.2026 на задаче правки escalate.js). Подсказка обязана толкать к действию,
+        // а не к ответу: у модели УЖЕ есть данные, не хватает решимости их применить.
+        result = `ПОВТОР: этот вызов уже сделан ${n - 1} раз(а) с тем же результатом — данные у тебя ЕСТЬ. `
+          + `Не читай снова. Если задача требует действия (правка файла, отправка, запись) — ВЫПОЛНИ его `
+          + `сейчас соответствующим инструментом. Если действие не требуется — дай финальный ответ.`;
       } else {
         result = await execWithRetry(name, args);
       }
@@ -189,7 +196,7 @@ async function converse(history, userText, { model = DEFAULT_MODEL, maxSteps = 8
     catch (_) { try { return await tools.exec(name, args); } catch (e2) { return `ERROR: ${e2.message}`; } }
   }
   for (let step = 0; step < maxSteps; step++) {
-    history = budget.compact(history);
+    history = await budget.compactAsync(history);
     const msg = await chatTools(history, { model });
     history.push(msg._raw || msg); // в историю — родной формат бэкенда
     const calls = msg.tool_calls || [];
@@ -205,7 +212,10 @@ async function converse(history, userText, { model = DEFAULT_MODEL, maxSteps = 8
       const name = c.function?.name; const args = c.function?.arguments || {};
       const sig = name + ':' + JSON.stringify(args); const n = (seen.get(sig) || 0) + 1; seen.set(sig, n);
       emit({ type: 'call', name, args });
-      const result = n > 2 ? 'ПОВТОР: уже вызвано — используй результат и отвечай.' : await execWithRetry(name, args);
+      // Та же поправка, что в runAgent: толкаем к ДЕЙСТВИЮ, а не к ответу (см. комментарий выше).
+      const result = n > 2
+        ? 'ПОВТОР: уже вызвано, данные у тебя ЕСТЬ. Не читай снова — если задача требует действия, ВЫПОЛНИ его сейчас нужным инструментом; иначе дай финальный ответ.'
+        : await execWithRetry(name, args);
       emit({ type: 'result', name, result: String(result).slice(0, 500) });
       history.push(toolResultMsg(c, name, result)); // формат зависит от бэкенда
     }

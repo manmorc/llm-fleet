@@ -27,8 +27,17 @@ const ALIAS = process.env.LLAMA_ALIAS || 'gpt-oss';
 const EXE = process.env.LLAMA_EXE || path.join(os.homedir(), 'tools', 'llama.cpp-b10046', 'llama-server.exe');
 const MODEL_FILE = process.env.LLAMA_MODEL_FILE || path.join(os.homedir(), '.lmstudio', 'models',
   'ggml-org', 'gpt-oss-20b-GGUF', 'gpt-oss-20b-MXFP4.gguf');
-const NCPUMOE = process.env.LLAMA_N_CPU_MOE || '2';
-const CTX = process.env.LLAMA_CTX || '16384';
+// КОНТЕКСТ 128k — полный, на который обучена gpt-oss-20b. Замер 31.07.2026 (agent/bench-ctx.js):
+//   16k  n-cpu-moe=2  KV f16   → 11372/12282 МБ, 91 t/s
+//   64k  n-cpu-moe=4  KV q8_0  → 11032/12282 МБ, 75 t/s
+//   128k n-cpu-moe=6  KV q8_0  → 11198/12282 МБ, 62 t/s   ← выбрано
+//   128k n-cpu-moe=12 KV q8_0  →  8770/12282 МБ, 31 t/s   (лишний вынос в RAM бьёт вдвое, не нужен)
+// Размен: ~30% скорости за 8× контекста. Приоритет владельца — качество работы, не токены в секунду
+// («в пределах разумного по времени»), а на 16k агент не мог удержать даже два файла этого проекта.
+// Вернуть скорость: LLAMA_CTX=16384 LLAMA_N_CPU_MOE=2 LLAMA_KV_TYPE=f16.
+const NCPUMOE = process.env.LLAMA_N_CPU_MOE || '6';
+const CTX = process.env.LLAMA_CTX || '131072';
+const KVTYPE = process.env.LLAMA_KV_TYPE || 'q8_0';   // квантование KV-кэша: вдвое меньше VRAM на тот же контекст
 const AUTOSTART = process.env.LLAMA_AUTOSTART !== '0';   // 0 = не поднимать самим (CI/чужая машина)
 // Файл «последней активности» — ОБЩИЙ между процессами (воркер/агент/чат пишут, watchdog читает).
 // Так простой детектируется надёжно: ensure() зовётся перед КАЖДЫМ запросом → штамп не пропустит ни один.
@@ -122,7 +131,10 @@ async function ensure({ log = () => {} } = {}) {
     // → утечка ~16 ГБ RAM за цикл (замерено). С mmap вес — file-backed страницы (page cache), ОС
     // освобождает их чисто при ЛЮБОМ убийстве. Цена: ~18% скорости. Для машины 32 ГБ, которую делят
     // с работой владельца, RAM важнее. Вернуть скорость (ценой утечки при выгрузке): LLAMA_NO_MMAP=1.
+    // -fa on + KV q8_0 — то, чем оплачен переход с 16k на 128k: flash-attention и квантование
+    // KV-кэша вдвое снижают его вес, иначе 128k в 12 ГБ видеопамяти не влезает вовсе.
     const args = ['-m', MODEL_FILE, '--n-cpu-moe', NCPUMOE, '-ngl', '99', '-c', CTX,
+      '-fa', 'on', '-ctk', KVTYPE, '-ctv', KVTYPE,
       '--host', '127.0.0.1', '--port', PORT, '-a', ALIAS, '--jinja'];
     if (process.env.LLAMA_NO_MMAP === '1') args.splice(4, 0, '--no-mmap');
     // Ретрай: если процесс умер на загрузке (напр. чужой taskkill /IM зацепил наш спавн в гонке),

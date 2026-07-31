@@ -43,7 +43,20 @@ module.exports = {
         AGENT_BACKEND: LLM_BACKEND, AGENT_API_URL: LLM_URL,
         AGENT_ID: 'desktop-local',
         AGENT_PRIVKEY_FILE: path.join(HOME, '.agent-bus', 'desktop-local.key'),
-        AGENT_SUPERVISOR: process.env.AGENT_SUPERVISOR || L.AGENT_SUPERVISOR || 'deny', // read-only обкатка
+        // НАДЗОР ЧЕРЕЗ ШИНУ (решение владельца 31.07.2026: «перепроверять его действия, хоть первую
+        // неделю»). Каждое рисковое действие (write_file/shell) уходит заявкой в inbox desktop-tt4i69c
+        // → персистер пишет в лог → Monitor будит живую сессию Claude → ответ через agent/approve.js.
+        // Агент БЛОКИРУЕТСЯ до решения. Не ответили за таймаут — отказ (fail-closed), а не «пропустить».
+        // Жёсткий чёрный список (rm -rf, кража ключей, автозапуск) режет ДО заявки и в любом режиме.
+        // Вернуть read-only: AGENT_SUPERVISOR=deny.
+        AGENT_SUPERVISOR: process.env.AGENT_SUPERVISOR || L.AGENT_SUPERVISOR || 'bus',
+        AGENT_SUPERVISOR_ID: 'desktop-tt4i69c',
+        // 10 минут вместо 2: заявка будит сессию через Monitor, и мне нужно реальное время заметить
+        // и ответить. Короткий таймаут превращал бы надзор в «отказ по умолчанию» на любой отлучке.
+        AGENT_APPROVAL_TIMEOUT: process.env.AGENT_APPROVAL_TIMEOUT || '600000',
+        // Без этого рисковые тулзы не попадают даже в список схем — модель их не увидит, и надзору
+        // будет нечего гейтить. Гейт (bus) и доступность (risky) — два РАЗНЫХ слоя, нужны оба.
+        AGENT_ALLOW_RISKY: process.env.AGENT_ALLOW_RISKY || '1',
         AGENT_ROOT: path.join(HOME, 'agent-sandbox'),
       } },
     // 4) idle-watchdog: гасит gemma-26b на простое, освобождает VRAM (загрузка по требованию — в server.js).

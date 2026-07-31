@@ -1,0 +1,120 @@
+{
+  "pass": 5,
+  "clean": 3,
+  "total": 8,
+  "pct": 63,
+  "pctClean": 38,
+  "withCollateral": 2,
+  "avgSec": 46.8,
+  "rows": [
+    {
+      "id": "budget-tokensLeft",
+      "file": "agent/budget.js",
+      "lines": 96,
+      "ok": false,
+      "note": "CHECK_FAIL: tokensLeft is not defined",
+      "calls": 5,
+      "sec": 53,
+      "shrunk": false,
+      "collateral": 0,
+      "lostSample": [],
+      "err": null
+    },
+    {
+      "id": "budget-env-coeff",
+      "file": "agent/budget.js",
+      "lines": 96,
+      "ok": true,
+      "note": "",
+      "calls": 3,
+      "sec": 13.3,
+      "shrunk": false,
+      "collateral": 1,
+      "lostSample": [
+        "const CHARS_PER_TOKEN = 2.8;      // проза (рус 2.96 / англ 3.48 — берём нижнюю границу)"
+      ],
+      "err": null
+    },
+    {
+      "id": "tools-word-count",
+      "file": "agent/tools.js",
+      "lines": 365,
+      "ok": false,
+      "note": "CHECK_FAIL: инструмент не зарегистрирован",
+      "calls": 10,
+      "sec": 122.2,
+      "shrunk": false,
+      "collateral": 0,
+      "lostSample": [],
+      "err": null
+    },
+    {
+      "id": "server-port-env",
+      "file": "agent/server.js",
+      "lines": 177,
+      "ok": true,
+      "note": "",
+      "calls": 2,
+      "sec": 16.3,
+      "shrunk": false,
+      "collateral": 0,
+      "lostSample": [],
+      "err": null
+    },
+    {
+      "id": "escalate-silent",
+      "file": "agent/escalate.js",
+      "lines": 63,
+      "ok": false,
+      "note": "CHECK_FAIL: опция silent не появилась в коде",
+      "calls": 10,
+      "sec": 32.2,
+      "shrunk": false,
+      "collateral": 0,
+      "lostSample": [],
+      "err": null
+    },
+    {
+      "id": "bus-send-json",
+      "file": "mcp/bus-send.js",
+      "lines": 72,
+      "ok": true,
+      "note": "",
+      "calls": 9,
+      "sec": 100.9,
+      "shrunk": false,
+      "collateral": 3,
+      "lostSample": [
+        "const text = process.argv.slice(3).join(' ');",
+        "    console.log(`broadcast → ${list.length}: ${list.join(', ') || '(никого)'} ${base.sig ? '(signed ✓)' : '(⚠ без ключа)'}`);"
+      ],
+      "err": null
+    },
+    {
+      "id": "loop-export-maxtokens",
+      "file": "agent/loop.js",
+      "lines": 230,
+      "ok": true,
+      "note": "",
+      "calls": 3,
+      "sec": 13.4,
+      "shrunk": false,
+      "collateral": 0,
+      "lostSample": [],
+      "err": null
+    },
+    {
+      "id": "budget-guard-negative",
+      "file": "agent/budget.js",
+      "lines": 96,
+      "ok": true,
+      "note": "",
+      "calls": 2,
+      "sec": 23,
+      "shrunk": false,
+      "collateral": 0,
+      "lostSample": [],
+      "err": null
+    }
+  ]
+}

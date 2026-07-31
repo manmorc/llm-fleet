@@ -21,3 +21,6 @@ agent/experiment-judgment.js
 
 # Приватные ключи шифрования секретов (mcp/seal.js) — только локально
 *.enc.key
+
+# промежуточный файл замера (пишется по ходу прогона)
+agent/bench-results/*.partial
