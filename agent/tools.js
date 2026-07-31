@@ -20,6 +20,31 @@ const ROOT = path.resolve(process.env.AGENT_ROOT || process.cwd());
 const MAX_OUT = parseInt(process.env.AGENT_MAX_TOOL_OUT
   || String(Math.max(8000, Math.floor(parseInt(process.env.LLAMA_CTX || '131072', 10) / 4))), 10);
 
+// ── БЕЛЫЙ СПИСОК ВНЕШНИХ ДОМЕНОВ ────────────────────────────────────────────────────────────────
+// Интернет агенту НЕ открывается целиком, и это не перестраховка: http_get с произвольным хостом
+// превращает агента в прокси внутрь сети владельца, а любой текст, попавший ему в контекст (страница,
+// письмо, чужое сообщение), становится способом заставить его сходить куда угодно.
+// Поэтому — явный список, ПУСТОЙ по умолчанию: владелец добавляет конкретные домены под конкретную
+// задачу. Список лежит ВНЕ репозитория (~/.agent-bus/http-allow.txt, по домену на строку) — чтобы
+// расширение доступа было решением владельца на его машине, а не строкой в общем коде, которая
+// приедет на все ноды флота с очередным git pull.
+// Поддомены разрешаются явно: 'example.com' пускает example.com и api.example.com, но НЕ evil-example.com.
+const ALLOW_FILE = path.join(require('os').homedir(), '.agent-bus', 'http-allow.txt');
+const ALLOWLIST = (() => {
+  const fromEnv = (process.env.AGENT_HTTP_ALLOW || '').split(',').map((s) => s.trim()).filter(Boolean);
+  let fromFile = [];
+  try {
+    fromFile = fs.readFileSync(ALLOW_FILE, 'utf8').split(/\r?\n/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s && !s.startsWith('#'));
+  } catch (_) {}
+  return [...new Set([...fromEnv, ...fromFile])];
+})();
+function allowedExternal(hostname) {
+  const h = String(hostname).toLowerCase();
+  return ALLOWLIST.some((d) => h === d || h.endsWith('.' + d));
+}
+
 function safePath(p) {
   const r = path.resolve(ROOT, p || '.');
   // 1) Лексическая проверка (быстрая, ловит ../).
@@ -106,16 +131,21 @@ const REGISTRY = {
   },
   http_get: {
     safe: true,
-    schema: { type: 'object', properties: { url: { type: 'string', description: 'URL (только localhost или tailnet 100.x)' } }, required: ['url'] },
-    description: 'HTTP GET к localhost/tailnet (напр. локальный API). Внешние хосты запрещены.',
+    schema: { type: 'object', properties: { url: { type: 'string', description: 'URL: localhost, tailnet 100.x или домен из белого списка' } }, required: ['url'] },
+    description: 'HTTP GET к localhost/tailnet и к доменам из белого списка. Прочие внешние хосты запрещены — если нужного домена нет в списке, скажи владельцу, какой домен и зачем.',
     run: async ({ url }) => {
       const u = new URL(url);
       // Tailnet CGNAT — это 100.64.0.0/10 (второй октет 64..127), а НЕ весь 100.0.0.0/8:
       // startsWith('100.') пускал бы публичные адреса вроде 100.20.x.x (AWS). Проверяем диапазон.
       const m = u.hostname.match(/^100\.(\d+)\./);
       const isTailnet = (m && +m[1] >= 64 && +m[1] <= 127) || u.hostname.endsWith('.ts.net');
-      const ok = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || isTailnet;
-      if (!ok) throw new Error(`хост запрещён: ${u.hostname} (только localhost/tailnet)`);
+      const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || isTailnet;
+      const ok = local || allowedExternal(u.hostname);
+      if (!ok) {
+        throw new Error(`хост "${u.hostname}" не разрешён. Доступны: localhost, tailnet и белый список`
+          + `${ALLOWLIST.length ? ' (' + ALLOWLIST.join(', ') + ')' : ' (сейчас пуст)'}. `
+          + 'Открыть интернет целиком нельзя. Скажи владельцу, какой домен нужен и зачем — он добавит.');
+      }
       // redirect:'error' — иначе разрешённый localhost мог 302-редиректить на внешний хост,
       // и мы бы вытащили его тело в обход allow-листа (проверяется только исходный hostname).
       const res = await fetch(url, { redirect: 'error' });
