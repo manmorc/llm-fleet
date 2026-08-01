@@ -6,6 +6,7 @@
 // ENV: REDIS_URL (обяз.) · AGENT_ID (по умолчанию hostname)
 const os = require('os');
 const IORedis = require('ioredis');
+const { flatten } = require('./agent-bus.persist'); // тот же экранировщик переносов, что у персистера
 
 const URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const ID = (process.env.AGENT_ID || os.hostname()).trim();
@@ -23,7 +24,10 @@ out(`▶ agent-bus watcher up — ${KEY}`);
       if (!res) continue;
       let m; try { m = JSON.parse(res[1]); } catch (_) { m = { text: res[1] }; }
       const tag = m.kind === 'broadcast' ? ' (broadcast)' : '';
-      out(`📨 ${m.from || '?'}${tag}: ${m.text || ''}`);
+      // ОДНО СООБЩЕНИЕ = ОДНА СТРОКА (тот же инцидент 02.08.2026, что и в персистере): вотчер —
+      // построчный стрим, и сырой текст с переносами превращал одно событие в несколько строк,
+      // из которых читатель брал первую. Переносы экранируем видимым маркером ⏎.
+      out(`📨 ${m.from || '?'}${tag}: ${flatten(m.text)}`);
     } catch (e) {
       process.stderr.write('[watch] ' + e.message + '\n');
       await new Promise((r) => setTimeout(r, 2000));
