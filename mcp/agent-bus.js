@@ -114,7 +114,24 @@ async function callTool(name, args) {
     const k = INBOX + AGENT_ID;
     const raw = await redis.lrange(k, 0, -1);
     if (!args.peek) await redis.del(k);
-    if (!raw.length) return '(пусто) — новых сообщений нет';
+    if (!raw.length) {
+      // ── «ПУСТО» МОЖЕТ ОЗНАЧАТЬ «Я НЕ ТУДА СМОТРЮ» (фикс 02.08.2026) ─────────────────────────────
+      // На узлах с durable-персистером (agent-bus.persist.js, BLPOP → ~/.agent-bus/<id>.log) ящик
+      // выгребается ИМ, и этот тул ВСЕГДА отвечает «пусто» — независимо от того, писал кто-то или нет.
+      // Цена ошибки уже заплачена: desktop-tt4i69c дважды писал (в т.ч. «СРОЧНО, владелец ждёт»),
+      // сообщения лежали в логе, а я четыре часа считал, что входящих нет. Классический тихий сбой:
+      // пустой ответ инструмента принят за факт о мире. Теперь тул сам показывает, где искать.
+      let hint = '';
+      try {
+        const fs = require('fs'), path = require('path'), os = require('os');
+        const logPath = path.join(os.homedir(), '.agent-bus', `${AGENT_ID}.log`);
+        const st = fs.statSync(logPath);
+        const ageMin = Math.round((Date.now() - st.mtimeMs) / 60000);
+        hint = `\n⚠ На этом узле ящик выгребает персистер → РЕАЛЬНЫЙ канал приёма: ${logPath}`
+             + ` (последняя запись ${ageMin} мин назад). «Пусто» здесь НЕ значит «сообщений не было».`;
+      } catch (_) { /* лога нет → персистера нет, обычное «пусто» честно */ }
+      return '(пусто) — новых сообщений нет' + hint;
+    }
     const msgs = raw.map(s => { try { return JSON.parse(s); } catch { return { text: s }; } });
     const mark = (m) => { const v = keys.verify(m); return v === 'ok' ? '✓' : `⚠${v}`; };
     return `Входящих: ${msgs.length}\n` + msgs.map((m, i) =>
