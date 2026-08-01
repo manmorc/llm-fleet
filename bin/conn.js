@@ -60,7 +60,17 @@ async function online() {
 }
 
 function machines() {
-  const hosts = readJson(HOSTS);
+  const cfg = readJson(HOSTS);
+  // ЛОГИН ОДИН НА ВЕСЬ ФЛОТ и задаётся в одном месте (defaultUser). Раньше он дублировался в каждой
+  // записи — это значит однажды поправить не все. Переопределение полем "user" оставлено на случай,
+  // если на конкретной машине учётка другая, но по умолчанию его быть не должно.
+  const user = cfg.defaultUser || 'makei';
+  const raw = cfg.hosts || {};
+  const hosts = {};
+  for (const [id, h] of Object.entries(raw)) {
+    if (!h || typeof h !== 'object') continue;
+    hosts[id] = { ...h, ssh: h.ssh || (h.host ? `${h.user || user}@${h.host}` : null) };
+  }
   const reg = Object.keys(readJson(KEYS)).filter((k) => !k.startsWith('//'));
   // Объединяем: реестр даёт ПОЛНЫЙ список флота, hosts — как туда попасть.
   // Машина без адреса всё равно показывается: лучше честное «адрес не задан», чем молчаливое отсутствие.
@@ -75,6 +85,19 @@ function connect(m) {
   if (!m.ssh) {
     console.error(`\n❌ для "${m.id}" не задан адрес в fleet-hosts.json.`);
     console.error('   Добавь запись вида: "' + m.id + '": { "ssh": "user@host", "note": "чья машина" }');
+    process.exit(1);
+  }
+  // Заглушка вместо логина — отказываем ЗДЕСЬ, а не отдаём ssh. Иначе он честно пробует войти
+  // пользователем с именем «ПОДТВЕРДИ_ЛОГИН», получает Permission denied и спрашивает пароль —
+  // и владелец решает, что не подходит ПАРОЛЬ. Ровно так и случилось 01.08.2026.
+  // Правило общее: незаполненный конфиг обязан ломаться громко и в точке причины, а не превращаться
+  // в правдоподобную ошибку тремя шагами позже.
+  if (/ПОДТВЕРДИ_ЛОГИН|CONFIRM_LOGIN|^@/.test(m.ssh)) {
+    console.error(`\n❌ для "${m.id}" НЕ ЗАДАН ЛОГИН — подключение отменено (пароль тут ни при чём).`);
+    console.error(`   Сейчас в fleet-hosts.json стоит заглушка: ${m.ssh}`);
+    console.error(`   Впиши реальное имя пользователя на той машине:`);
+    console.error(`     "${m.id}": { "ssh": "ТВОЙ_ЛОГИН@${m.ssh.split('@')[1] || 'host'}" }`);
+    console.error(`   Файл: ${HOSTS}`);
     process.exit(1);
   }
   console.log(`\n→ ${m.id}  (${m.ssh})\n`);
