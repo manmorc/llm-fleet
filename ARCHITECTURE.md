@@ -38,6 +38,8 @@
 - **tail-watcher** в живой сессии — `tail -F` лога → real-time входящие прямо в контекст.
 - **Подпись Ed25519** — send/broadcast подписываются приватным ключом; получатель проверяет по реестру `mcp/agent-keys.json`. Приём помечается `✓` / `⚠ UNVERIFIED`. `bus-send.js` — подписанная отправка без MCP.
 
+- **Селфтест** (`mcp/bus-selftest.js`) — сообщение самому себе тем же путём + приём обратно с проверкой `✓`; ненулевой exit при провале. Гоняется при старте сессии и **перед директивой/эскалацией**: ловит «отправил неподписанным / Redis молчит», которое раньше выглядело как успех.
+
 **Почему durable+подпись:** `from` в JSON self-asserted, пароль Redis общий → без подписи любой форжит отправителя; персистер вне сессии → приём не зависит от жизни Claude-сессии.
 
 ### 3. RAG-архив — общая семантическая память
@@ -72,4 +74,4 @@ BullMQ tier-очереди (`llm:strong/fast/embed`) + Ollama-воркеры н�
 | win-prestige | — | планируется | подключение по ONBOARDING |
 
 ## Репозиторий
-`manmorc/llm-fleet@develop` — `mcp/` (agent-bus, keys, keygen, bus-send, agent-keys.json) · `rag/` (server, lib, mcp, ingest/resync, README) · `tools/` (TG-хук) · README/ONBOARDING/ARCHITECTURE.
+`manmorc/llm-fleet@develop` — `mcp/` (agent-bus, keys, keygen, bus-send, bus-selftest, agent-keys.json) · `rag/` (server, lib, mcp, ingest/resync, README) · `tools/` (TG-хук) · README/ONBOARDING/ARCHITECTURE.
