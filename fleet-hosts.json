@@ -10,9 +10,10 @@
   "hosts": {
     "desktop-tt4i69c": {
       "host": "gemma-chat.tail241f5d.ts.net",
+      "user": "makei",
       "ip": "100.67.117.51",
       "os": "windows",
-      "note": "GPU-нода, RTX 4070 Ti · локальная модель gpt-oss-20b"
+      "note": "GPU-нода, RTX 4070 Ti · локальная модель gpt-oss-20b · учётка Windows отличается от остальных"
     },
     "linux-prestige": {
       "host": "artyom-prestige-14evo-b13m.tail241f5d.ts.net",
