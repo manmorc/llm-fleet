@@ -124,7 +124,9 @@ async function callTool(name, args) {
       let hint = '';
       try {
         const fs = require('fs'), path = require('path'), os = require('os');
-        const logPath = path.join(os.homedir(), '.agent-bus', `${AGENT_ID}.log`);
+        // AGENT_BUS_LOG — тот же источник, по которому персистер выбирает файл. Хардкод пути
+        // означал бы «подсказка врёт», когда персистер запущен с нестандартным логом.
+        const logPath = process.env.AGENT_BUS_LOG || path.join(os.homedir(), '.agent-bus', `${AGENT_ID}.log`);
         const st = fs.statSync(logPath);
         const ageMin = Math.round((Date.now() - st.mtimeMs) / 60000);
         hint = `\n⚠ На этом узле ящик выгребает персистер → РЕАЛЬНЫЙ канал приёма: ${logPath}`

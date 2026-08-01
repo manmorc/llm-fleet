@@ -7,7 +7,11 @@ const fs = require('fs'), os = require('os'), path = require('path'), crypto = r
 
 const KEYDIR = path.join(os.homedir(), '.agent-bus');
 const PRIV_FILE = process.env.AGENT_PRIVKEY_FILE || path.join(KEYDIR, 'agent.key');
-const REGS = [path.join(__dirname, 'agent-keys.json'), path.join(KEYDIR, 'agent-keys.json')]; // repo + локальный override
+// Реестр: репо + локальный override. AGENT_KEYS_FILE — ЯВНАЯ замена обоих (изолированный узел, тесты):
+// без неё регресс-тесты на broadcast/подпись зависели бы от того, что лежит в $HOME у прогоняющего.
+const REGS = process.env.AGENT_KEYS_FILE
+  ? [process.env.AGENT_KEYS_FILE]
+  : [path.join(__dirname, 'agent-keys.json'), path.join(KEYDIR, 'agent-keys.json')];
 
 function loadPriv() { try { return crypto.createPrivateKey(fs.readFileSync(PRIV_FILE)); } catch (_) { return null; } }
 function registry() {

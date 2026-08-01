@@ -4,6 +4,8 @@
   "description": "Распределённый пул LLM-воркеров: очередь задач (BullMQ/Redis) + локальные модели (Ollama) + удалённое управление и self-update",
   "bin": { "fleet": "bin/fleet.js" },
   "scripts": {
+    "test": "node --test \"mcp/*.test.js\"",
+    "bus:selftest": "node mcp/bus-selftest.js",
     "worker": "node src/worker.js",
     "fleet": "node bin/fleet.js",
     "chat": "node agent/chat.js",
