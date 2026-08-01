@@ -64,9 +64,11 @@ let history = [{ role: 'system', content: buildSystemPrompt() }];
 async function handle(text) {
   if (text === '/reset') { history = [{ role: 'system', content: buildSystemPrompt() }]; return '🔄 История сброшена.'; }
   if (text === '/help' || text === '/start') {
-    return ['Я — локальный агент на твоей GPU-машине (gpt-oss-20b).',
-      'Умею: читать файлы, считать точно, искать по RAG-архиву флота, grep, JSON-запросы, HTTP к localhost/tailnet.',
-      'Запись файлов и команды — заблокированы (режим deny).',
+    return ['Я — локальный агент на твоей GPU-машине (gpt-oss-20b, контекст 128k).',
+      'Читаю: файлы, RAG-архив флота, grep, JSON, HTTP к localhost/tailnet и белому списку доменов.',
+      'Считаю точно (арифметика через инструмент, не «в уме»).',
+      'Пишу: заметки в RAG-архив, сообщения другим машинам флота.',
+      'Правка файлов и команды — только через надзор: заявка уходит на согласование, я жду решения.',
       '',
       '/reset — сбросить историю диалога',
       '/status — состояние ноды'].join('\n');
@@ -84,8 +86,11 @@ async function handle(text) {
       onEvent: (e) => { if (e.type === 'call') log(`  → ${e.name}(${JSON.stringify(e.args).slice(0, 80)})`); },
     });
     history = r.history;
-    // Обрезаем историю, чтобы не разрасталась бесконечно (контекст 16k).
-    if (history.length > 40) history = [history[0], ...history.slice(-30)];
+    // Обрезку по КОЛИЧЕСТВУ сообщений убрал: она была подобрана под контекст 16k и считала
+    // сообщения, а не токены — одно чтение файла это 4-5 тысяч токенов и ровно одно «сообщение».
+    // Историю теперь ведёт budget.compactAsync внутри converse: считает токены точно (через
+    // /tokenize самой модели), выбрасывает сначала объёмные результаты инструментов и сохраняет
+    // разговор. Две обрезки подряд только мешали бы друг другу.
     return r.answer || '(пустой ответ)';
   } finally { clearInterval(keepTyping); }
 }
@@ -102,11 +107,13 @@ async function handle(text) {
     }
   } catch (_) {}
 
+  let pollFails = 0;   // подряд идущих обрывов опроса; сбрасывается любым успешным ответом
   for (;;) {
     try {
       const up = await tg('getUpdates', { offset, timeout: POLL_TIMEOUT, allowed_updates: ['message'] },
         (POLL_TIMEOUT + 15) * 1000);
       if (!up.ok) { log(`getUpdates: ${up.description}`); await new Promise((r) => setTimeout(r, 5000)); continue; }
+      pollFails = 0;   // опрос прошёл — прежние обрывы были транзиентными
       for (const u of up.result) {
         offset = u.update_id + 1;
         const msg = u.message;
@@ -125,8 +132,15 @@ async function handle(text) {
         }
       }
     } catch (e) {
-      log(`loop err: ${e.message}`);
-      escalate('tg-bridge/poll', e.message).catch(() => {});
+      // ЭСКАЛИРУЕМ ТОЛЬКО УСТОЙЧИВЫЙ СБОЙ, а не каждый обрыв. Длинный опрос Телеграма рвётся сам
+      // по себе 2-3 раза в сутки (таймаут, fetch failed) и восстанавливается следующей итерацией —
+      // будить живую сессию на такое значит приучить её игнорировать аварийные уведомления, а это
+      // ровно класс «ложная тревога» из RETRO STANDARD. Тревога, на которую нечего делать, хуже
+      // отсутствия тревоги: она обесценивает настоящие.
+      // Порог: 3 подряд ≈ минута безуспешных попыток — тогда мост действительно не работает.
+      pollFails++;
+      log(`loop err (${pollFails} подряд): ${e.message}`);
+      if (pollFails >= 3) escalate('tg-bridge/poll', `${pollFails} обрывов опроса подряд, последний: ${e.message}`).catch(() => {});
       await new Promise((r) => setTimeout(r, 3000));
     }
   }
