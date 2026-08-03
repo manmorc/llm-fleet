@@ -50,6 +50,7 @@ if (!URL) { console.error('ERR нет REDIS_URL: ни в окружении, н�
 const ID = (process.env.AGENT_ID || fromFleetEnv('FLEET_NODE_ID') || os.hostname()).trim();
 const to = process.argv[2];
 const integrity = require('./bus-integrity');
+const { wakeNode, wakeRegistry } = require('./bus-wake');
 // Маркер целостности в НАЧАЛЕ текста: обрезается хвост, поэтому контрольная сумма обязана
 // пережить обрыв. Ставим ДО подписи — canon включает text, обе проверки должны считать одно.
 const text = integrity.stamp(process.argv.slice(3).join(' '));
@@ -82,6 +83,26 @@ watchdog.unref?.();
 async function online() { const out = []; for (const k of await r.keys(PRESENCE + '*')) { const v = await r.get(k); if (v) try { out.push(JSON.parse(v).id); } catch (_) {} } return out; }
 async function deliver(dst, rec) { const k = INBOX + dst; await r.rpush(k, JSON.stringify(rec)); await r.ltrim(k, -500, -1); await r.expire(k, 7 * 24 * 3600); }
 
+// ПРОБУЖДЕНИЕ ОТСУТСТВУЮЩИХ. Вызывается ПОСЛЕ доставки и никогда до неё: ящик durable, сообщение
+// уже лежит и дождётся адресата в любом случае. Пакет лишь ускоряет чтение — поэтому его отказ
+// НЕ влияет на исход отправки и не может её уронить.
+// ⚠️ Докладываем «пакет отправлен», а НЕ «разбудил»: у WoL нет обратной связи, и утверждать
+// состояние чужой машины мы не вправе. Подтверждение — появление узла в presence.
+async function wakeAbsent(ids, live) {
+  const reg = wakeRegistry();
+  const absent = ids.filter((id) => !live.has(id) && reg[id]);
+  for (const id of absent) {
+    try {
+      const w = await wakeNode(id);
+      console.log(w.sent
+        ? `  ⏰ ${id}: спит — отправлен пакет пробуждения (${w.bytes} байт ×${w.repeat} → ${w.broadcast}:${w.port}); проснулся он или нет, WoL не сообщает`
+        : `  ⏰ ${id}: спит, разбудить не вышло — ${w.reason} (сообщение всё равно доставлено в ящик)`);
+    } catch (e) {
+      console.log(`  ⏰ ${id}: сбой пробуждения (${e.message}) — на доставку не влияет`);
+    }
+  }
+}
+
 (async () => {
   const ts = Date.now();
   if (WHO) {
@@ -102,10 +123,12 @@ async function deliver(dst, rec) { const k = INBOX + dst; await r.rpush(k, JSON.
     for (const d of list) await deliver(d, { ...base, to: d });
     const seen = list.filter((x) => live.has(x)).length;
     console.log(`broadcast → ${list.length} (онлайн сейчас ${seen}): ${list.join(', ') || '(никого)'} ${base.sig ? '(signed ✓)' : '(⚠ без ключа)'}`);
+    await wakeAbsent(list, live);
   } else {
     const rec = { from: ID, to, text, kind: 'direct', ts }; rec.sig = keys.sign(rec);
     await deliver(to, rec);
     console.log(`→ ${to}: отправлено ${rec.sig ? '(signed ✓)' : '(⚠ без ключа)'}`);
+    await wakeAbsent([to], new Set(await online()));
   }
 })()
   .then(() => { clearTimeout(watchdog); return r.quit().catch(() => r.disconnect()); })
