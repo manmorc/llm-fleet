@@ -23,7 +23,11 @@ const keys = require('./keys');
 const integrity = require('./bus-integrity');
 
 // HOME пустой и временный: скрипт не должен подхватить боевой ~/.agent-bus/fleet.env.
-const env = (extra = {}) => ({ HOME: dir, AGENT_ID: SELF, AGENT_KEYS_FILE: REG, AGENT_PRIVKEY_FILE: selfKey.file, ...extra });
+// ⚠️ USERPROFILE ОБЯЗАТЕЛЕН НАРЯДУ С HOME. На Windows os.homedir() читает USERPROFILE и HOME
+// ИГНОРИРУЕТ — «пустой дом» оказывался настоящим, скрипт находил боевой fleet.env, получал
+// REDIS_URL и НЕ падал, хотя тест ждал отказа. Тест при этом лез в файл с паролем от Redis,
+// то есть изоляции не было вовсе. На Linux/macOS проходило, на Windows — нет.
+const env = (extra = {}) => ({ HOME: dir, USERPROFILE: dir, AGENT_ID: SELF, AGENT_KEYS_FILE: REG, AGENT_PRIVKEY_FILE: selfKey.file, ...extra });
 const inboxOf = (state, id) => (state.list || {})[`agents:inbox:${id}`] || [];
 
 // Заведомо закрытый порт: поднимаем и сразу гасим слушателя — честнее мока, ловит и ретраи, и сокет.
