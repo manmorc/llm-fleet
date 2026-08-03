@@ -13,6 +13,9 @@
 const os = require('os');
 const IORedis = require('ioredis');
 const keys = require('./keys'); // Ed25519 подпись/проверка отправителя
+// Маркер целостности в начале текста. Подпись отвечает «от кого», маркер — «всё ли я вижу»:
+// подпись проверяется ДО записи в лог, где текст ещё целый, и обрыв ПОКАЗА она поймать не может.
+const integrity = require('./bus-integrity');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const AGENT_ID = (process.env.AGENT_ID || os.hostname()).trim();
@@ -85,7 +88,9 @@ async function callTool(name, args) {
   }
   if (name === 'send') {
     if (!args.to || !args.text) throw new Error('нужны to и text');
-    const rec = { from: AGENT_ID, to: args.to, text: String(args.text), kind: 'direct', ts: Date.now() };
+    // Штампуем ДО подписи: canon включает text, и подпись обязана покрывать уже помеченный текст,
+    // иначе получатель, проверяющий подпись, и получатель, проверяющий маркер, считали бы разное.
+    const rec = { from: AGENT_ID, to: args.to, text: integrity.stamp(String(args.text)), kind: 'direct', ts: Date.now() };
     rec.sig = keys.sign(rec); // подпись отправителя (canon = from|ts|text)
     await deliver(args.to, rec);
     return `Отправлено → ${args.to}: "${rec.text}"${rec.sig ? '' : ' [⚠ без подписи — нет приватного ключа]'}`;
@@ -104,7 +109,7 @@ async function callTool(name, args) {
     const reg = (() => { try { return Object.keys(keys.registry() || {}).filter(k => !k.startsWith('//')); } catch (_) { return []; } })();
     const live = new Set((await online()).map(a => a.id));
     const targets = (reg.length ? reg : [...live]).filter(id => id !== AGENT_ID);
-    const rec = { from: AGENT_ID, text: String(args.text), kind: 'broadcast', ts: Date.now() };
+    const rec = { from: AGENT_ID, text: integrity.stamp(String(args.text)), kind: 'broadcast', ts: Date.now() };
     rec.sig = keys.sign(rec); // canon не включает to → одна подпись валидна для всех получателей
     for (const id of targets) await deliver(id, { ...rec, to: id });
     const shown = targets.map(id => id + (live.has(id) ? '' : ' (спит — заберёт из inbox)')).join(', ');

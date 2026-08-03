@@ -23,6 +23,7 @@ process.env.AGENT_KEYS_FILE = REG;          // до require('./keys') — про
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const keys = require('./keys');
+const integrity = require('./bus-integrity');
 
 // Окружение «боевого» узла: свой id, свой приватный ключ, изолированный $HOME.
 const baseEnv = (extra = {}) => ({
@@ -139,7 +140,13 @@ test('send с ключом → подписанное сообщение в ящ
   assert.match(r.texts[0], /Отправлено → node-live/);
   const rec = JSON.parse(inboxOf(r.state, LIVE)[0]);
   assert.equal(rec.from, SELF);
-  assert.equal(rec.text, 'по делу');
+  // С 03.08.2026 текст уходит с маркером целостности в начале. Сверяем не сырую строку, а ТЕЛО
+  // после проверки маркера — так тест продолжает утверждать ровно то же («дошло целиком»),
+  // но заодно доказывает, что маркер поставлен и сходится.
+  const iv = integrity.verify(rec.text);
+  assert.equal(iv.stamped, true, 'отправка обязана ставить маркер целостности');
+  assert.equal(iv.ok, true, 'маркер сходится с телом');
+  assert.equal(iv.body, 'по делу');
   assert.equal(keys.verify(rec), 'ok');
 });
 
@@ -147,7 +154,11 @@ test('send с многострочным текстом кладёт в ящик
   const text = 'шапка\nтело1\nтело2';
   const r = await runBus({ env: baseEnv(), requests: [toolCall('send', { to: LIVE, text })] });
   const rec = JSON.parse(inboxOf(r.state, LIVE)[0]);
-  assert.equal(rec.text, text);
+  const iv = integrity.verify(rec.text);
+  assert.equal(iv.ok, true, 'маркер сходится — тело дошло целиком');
+  assert.equal(iv.body, text);
+  // Подпись покрывает УЖЕ ПОМЕЧЕННЫЙ текст: обе проверки обязаны считать одно и то же,
+  // иначе получатель, доверяющий подписи, и получатель, доверяющий маркеру, разойдутся.
   assert.equal(keys.verify(rec), 'ok');
 });
 

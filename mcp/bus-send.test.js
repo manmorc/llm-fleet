@@ -20,6 +20,7 @@ const selfKey = makeKey(dir, SELF);
 const REG = writeRegistry(dir, { [SELF]: selfKey.pub, [PEER]: makeKey(dir, PEER).pub, [SLEEPER]: makeKey(dir, SLEEPER).pub });
 process.env.AGENT_KEYS_FILE = REG;
 const keys = require('./keys');
+const integrity = require('./bus-integrity');
 
 // HOME пустой и временный: скрипт не должен подхватить боевой ~/.agent-bus/fleet.env.
 const env = (extra = {}) => ({ HOME: dir, AGENT_ID: SELF, AGENT_KEYS_FILE: REG, AGENT_PRIVKEY_FILE: selfKey.file, ...extra });
@@ -82,7 +83,9 @@ test('happy-path: сообщение подписано и лежит в ящи�
   assert.equal(r.code, 0);
   assert.match(r.out, /signed ✓/);
   const rec = JSON.parse(inboxOf(r.state, PEER)[0]);
-  assert.equal(rec.text, text, 'многострочный текст не должен обрезаться при отправке');
+  const iv = integrity.verify(rec.text);
+  assert.equal(iv.ok, true, 'маркер целостности сходится — текст дошёл целиком');
+  assert.equal(iv.body, text, 'многострочный текст не должен обрезаться при отправке');
   assert.equal(keys.verify(rec), 'ok');
 });
 

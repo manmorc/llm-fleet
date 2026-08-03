@@ -49,7 +49,10 @@ if (!URL) { console.error('ERR нет REDIS_URL: ни в окружении, н�
 // в форме, которую получатель обязан игнорировать. Классический тихий сбой.
 const ID = (process.env.AGENT_ID || fromFleetEnv('FLEET_NODE_ID') || os.hostname()).trim();
 const to = process.argv[2];
-const text = process.argv.slice(3).join(' ');
+const integrity = require('./bus-integrity');
+// Маркер целостности в НАЧАЛЕ текста: обрезается хвост, поэтому контрольная сумма обязана
+// пережить обрыв. Ставим ДО подписи — canon включает text, обе проверки должны считать одно.
+const text = integrity.stamp(process.argv.slice(3).join(' '));
 // --who: список онлайн-агентов (нужен инструменту bus_who локального агента — чтобы он не слал в пустоту).
 const WHO = to === '--who';
 if (!WHO && (!to || !text)) { console.error('usage: AGENT_ID=<id> REDIS_URL=<url> node mcp/bus-send.js <to|all> <текст>   |   node mcp/bus-send.js --who'); process.exit(1); }
