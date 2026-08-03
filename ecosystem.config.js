@@ -69,6 +69,10 @@ module.exports = {
 
     { ...common, name: 'tg-bridge', script: 'agent/tg-bridge.js', env: {} },
 
+    // 7) удержание от сна на время работы: пока есть задачи/генерация/разговор по шине —
+    //    сбрасываем счётчик простоя Windows; работы нет — отпускаем, и машина засыпает сама.
+    //    Раньше сон был отключён «навсегда», и машина не спала вообще. Подробности — agent/keep-awake.js.
+    { ...common, name: 'keep-awake', script: 'agent/keep-awake.js', env: {} },
     // 5) веб-шлюз чата: всегда жив, будит модель на первом сообщении, проксирует. Выставлен tailscale serve
     //    на https://desktop-tt4i69c.tail241f5d.ts.net/ — владелец общается с моделькой из браузера удалённо.
     { ...common, name: 'chat-gateway', script: 'agent/chat-gateway.js',
