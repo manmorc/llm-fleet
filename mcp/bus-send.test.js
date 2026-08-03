@@ -7,6 +7,7 @@
 // и внятной причиной. Молчание/зависание успехом не считается.
 // Плюс инцидент №2 в его копии: broadcast здесь адресует по реестру, а не по presence.
 const net = require('net');
+const fs = require('fs');
 const path = require('path');
 const { tmpDir, makeKey, writeRegistry, runScript } = require('./test/fixtures');
 
@@ -73,6 +74,30 @@ test('ИНЦИДЕНТ №1 (корень): нет REDIS_URL → отказ до
   const r = await runScript(SEND, [PEER, 'текст'], { env: env() });   // ни env, ни fleet.env в пустом HOME
   assert.equal(r.code, 1);
   assert.match(r.err, /нет REDIS_URL/);
+});
+
+// ⚠️ ЭТОТ ТЕСТ ДЕЛАЕТ ПРЕДЫДУЩИЙ ОСМЫСЛЕННЫМ. Тест выше — ОТРИЦАТЕЛЬНЫЙ: он проходит и тогда,
+// когда подмена дома работает, и тогда, когда её нет вовсе, а боевого fleet.env просто не существует
+// на этой машине. Именно так и было: на Windows дефект (HOME без USERPROFILE) валил его громко,
+// а на Linux он был ЗЕЛЁНЫМ ВХОЛОСТУЮ — потому что ~/.agent-bus/fleet.env тут отсутствует.
+// Зелёный по случайности неотличим от зелёного по существу, пока не проверишь ПОЛОЖИТЕЛЬНЫМ случаем.
+//
+// Здесь мы кладём fleet.env ВНУТРЬ песочницы и требуем, чтобы скрипт прочитал ИМЕННО ЕГО. Сломается
+// изоляция — скрипт этого файла не увидит, скажет «нет REDIS_URL», и тест покраснеет на ЛЮБОЙ
+// платформе, а не только там, где случайно есть боевой конфиг.
+test('изоляция дома РАБОТАЕТ: скрипт читает fleet.env из песочницы, а не из боевого дома', async () => {
+  const busDir = path.join(dir, '.agent-bus');
+  fs.mkdirSync(busDir, { recursive: true });
+  const port = await freePort();                       // заведомо закрытый: соединение не состоится
+  fs.writeFileSync(path.join(busDir, 'fleet.env'), `REDIS_URL=redis://127.0.0.1:${port}\n`);
+  try {
+    const r = await runScript(SEND, [PEER, 'текст'], { env: env({ BUS_SEND_TIMEOUT_MS: '3000' }) });
+    assert.notEqual(r.code, 0, 'закрытый порт → отказ');
+    assert.doesNotMatch(r.err, /нет REDIS_URL/,
+      'скрипт НЕ нашёл fleet.env песочницы → подмена домашней папки не сработала, изоляции нет');
+  } finally {
+    fs.rmSync(path.join(busDir, 'fleet.env'), { force: true });
+  }
 });
 
 test('без аргументов → usage и ненулевой код (а не «как бы отправлено»)', async () => {

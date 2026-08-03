@@ -28,7 +28,10 @@ const integrity = require('./bus-integrity');
 // Окружение «боевого» узла: свой id, свой приватный ключ, изолированный $HOME.
 const baseEnv = (extra = {}) => ({
   AGENT_ID: SELF, AGENT_KEYS_FILE: REG, AGENT_PRIVKEY_FILE: selfKey.file,
-  HOME: dir, ...extra,
+  // ⚠️ USERPROFILE НАРЯДУ С HOME: на Windows os.homedir() читает USERPROFILE и HOME игнорирует,
+  // и «пустой дом» оказывается настоящим — тест лезет в боевой ~/.agent-bus вместо песочницы.
+  // Найдено desktop-tt4i69c в bus-send.test.js (a57945c); тот же класс жил и здесь.
+  HOME: dir, USERPROFILE: dir, ...extra,
 });
 const presence = (id) => JSON.stringify({ id, label: '', host: id, ts: Date.now() });
 const inboxOf = (state, id) => (state.list || {})[`agents:inbox:${id}`] || [];
