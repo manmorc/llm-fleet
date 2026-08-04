@@ -112,7 +112,20 @@ function pidAlive(pid) {
 let inFlight = null;      // один подъём на процесс: параллельные вызовы ждут его же, а не плодят серверы
 let serverPid = null;     // pid НАШЕГО llama-server (для точного fast-fail и защиты от дубль-спавна)
 
+// ТИХИЙ РЕЖИМ: владелец играет на этой машине, и модель не должна занимать VRAM.
+// Флаг — ФАЙЛ, а не переменная окружения: его видят ВСЕ процессы сразу (pm2-сервисы, крон-джобы,
+// ручные запуски), не требуется перезапуск и не надо помнить, кому что передали. Проверяется на
+// каждый ensure(), поэтому включение действует немедленно, даже посреди работы джоба.
+const QUIET_FILE = path.join(os.homedir(), '.agent-bus', 'quiet-mode');
+const quietOn = () => { try { return fs.existsSync(QUIET_FILE); } catch (_) { return false; } };
+
 async function ensure({ log = () => {} } = {}) {
+  // Проверяем ДО probe: если режим включили, пока модель ещё тёплая, отказываем сразу —
+  // иначе джоб «проскочит» на уже загруженной модели и продолжит держать видеопамять.
+  if (quietOn()) {
+    throw new Error('ТИХИЙ РЕЖИМ включён: модель не поднимается, видеопамять свободна для игр. '
+      + 'Выключить — ярлык «Модель ВКЛ» на рабочем столе или `node agent/quiet.js off`.');
+  }
   touchActivity();   // любой запрос = активность (сброс idle-таймера watchdog'а), даже если модель уже тёплая
   if (await probe(4000)) return true;
   if (!AUTOSTART) throw new Error(`модель не отвечает на ${BASE} и LLAMA_AUTOSTART=0`);
@@ -168,9 +181,55 @@ async function ensure({ log = () => {} } = {}) {
   return inFlight;
 }
 
-function stop() {
-  try { execSync('taskkill /F /IM llama-server.exe', { stdio: 'ignore', windowsHide: true }); serverPid = null; return true; }
-  catch (_) { return false; }
+// Живые процессы llama-server. ЭТО ГРУНТ-ТРУС для «выгружена из памяти»: probe() отвечает по
+// порту и может замолчать раньше, чем процесс умрёт и драйвер отдаст видеопамять, а владельцу
+// важен именно освобождённый гигабайт, а не закрытый сокет.
+function llamaPids() {
+  try {
+    const out = execSync('tasklist /FI "IMAGENAME eq llama-server.exe" /FO CSV /NH',
+      { encoding: 'utf8', windowsHide: true });
+    return out.split(/\r?\n/)
+      .filter((l) => /llama-server\.exe/i.test(l))     // «INFO: No tasks...» отсеивается сам
+      .map((l) => { const m = l.match(/"[^"]*","(\d+)"/); return m ? Number(m[1]) : null; })
+      .filter(Boolean);
+  } catch (_) { return []; }
 }
 
-module.exports = { ensure, probe, stop, slotsBusy, taskCounter, lastActivity, touchActivity, loadingInProgress, BASE, ALIAS };
+// ОСТАНОВКА С ПОДТВЕРЖДЕНИЕМ.
+//
+// Было: `execSync(taskkill); return true` — успех объявлялся в момент ОТПРАВКИ команды. Две дыры,
+// обе тихие:
+//   1) taskkill упал (нет прав, процесс чужой сессии) → возвращали false, а quiet.js это значение
+//      ИГНОРИРОВАЛ и всё равно печатал «выгружена». Сообщение обещало больше, чем механизм делал —
+//      тот же класс, что ярлык «Модель ВКЛ», который ничего не включал.
+//   2) taskkill сработал, но процесс ещё умирает: под нагрузкой отдать 11.6 ГБ занимает секунды.
+//      Владелец видел «выгружена», открывал диспетчер — память занята. Ровно его жалоба.
+// Стало: ждём, пока процессов не останется, и возвращаем ЧТО ИМЕННО произошло, включая тех, кто
+// выжил. deps — точки подмены для тестов: настоящий taskkill в тесте не погоняешь.
+async function stop({ timeoutMs = 20000, deps = {} } = {}) {
+  const kill = deps.kill || (() => execSync('taskkill /F /IM llama-server.exe', { stdio: 'ignore', windowsHide: true }));
+  const pids = deps.pids || llamaPids;
+  const nap = deps.sleep || sleep;
+
+  const before = pids();
+  if (!before.length) { serverPid = null; return { ok: true, wasLoaded: false, killed: [], waitedMs: 0 }; }
+
+  let killErr = null;
+  try { kill(); } catch (e) { killErr = e; }
+
+  const t0 = Date.now();
+  for (;;) {
+    const left = pids();
+    if (!left.length) { serverPid = null; return { ok: true, wasLoaded: true, killed: before, waitedMs: Date.now() - t0 }; }
+    if (Date.now() - t0 >= timeoutMs) {
+      return {
+        ok: false, wasLoaded: true, killed: [], left, waitedMs: Date.now() - t0,
+        why: killErr ? `taskkill не сработал: ${killErr.message}`
+                     : `процесс не умер за ${Math.round(timeoutMs / 1000)} с (pid ${left.join(', ')})`,
+      };
+    }
+    await nap(300);
+  }
+}
+
+module.exports = { ensure, probe, stop, llamaPids, slotsBusy, taskCounter, lastActivity, touchActivity, loadingInProgress, BASE, ALIAS };

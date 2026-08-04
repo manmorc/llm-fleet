@@ -55,7 +55,13 @@ async function tick() {
     // источников → не гасим (закрываем гонку stop-vs-request).
     if (idleFor() < IDLE_MS) return;
     log(`простой ${Math.round(idleFor() / 60000)} мин ≥ ${Math.round(IDLE_MS / 60000)} — гашу llama-server, освобождаю VRAM`);
-    server.stop();
+    // Результат ОБЯЗАТЕЛЬНО в лог. Раньше было `server.stop()` без await и без проверки: лог писал
+    // «гашу», и это выглядело как «погасил». Неудачная выгрузка не оставляла ни следа — а именно её
+    // и надо видеть, потому что дальше вотчер ждёт нового простоя и повторит попытку не скоро.
+    const r = await server.stop();
+    if (r.ok && r.wasLoaded) log(`погашен (pid ${r.killed.join(', ')}), заняло ${(r.waitedMs / 1000).toFixed(1)} с`);
+    else if (!r.wasLoaded) log('гасить было нечего — процесса уже не было');
+    else log(`✗ НЕ ПОГАШЕН: ${r.why} — видеопамять занята, повторю на следующем простое`);
   } catch (e) { log(`tick err: ${e.message}`); }
 }
 
