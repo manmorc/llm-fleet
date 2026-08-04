@@ -33,10 +33,33 @@ const worker = new Worker(cfg.queueName, async (job) => {
   return skill.run(job.data, { model: job.data?._model || cfg.model, chat });
 }, { connection, concurrency: cfg.concurrency, prefix: cfg.queuePrefix });
 
+// ЧТО ИМЕННО СЧИТАЛА МОДЕЛЬ — раньше в логе был только номер: «[done] chat #2900».
+// Владелец спросил «какие задачи прилетели», и ответить оказалось НЕЧЕМ: очередь удаляет
+// выполненную задачу вместе с содержимым (removeOnComplete у отправителя), лог хранил один
+// счётчик. Постфактум восстановить нельзя — 28 задач 04.08 16:23–16:35 так и остались безымянными.
+// Поэтому пишем СРАЗУ и на своей стороне: кто прислал, сколько времени, начало запроса.
+// Обрезка до 160 знаков намеренная: лог должен оставаться строчным и читаемым, а для «что это
+// было» хватает первой фразы. Переносы схлопываем — одна задача = одна строка.
+function describe(job) {
+  const d = job.data || {};
+  const who = d._from || d._requester || d._origin || d.source || '?';
+  const body = d.prompt || d.text || d.message
+    || (Array.isArray(d.messages) ? (d.messages[d.messages.length - 1] || {}).content : '')
+    || '';
+  const head = String(body).replace(/\s+/g, ' ').trim().slice(0, 160);
+  return `от ${who}` + (head ? ` · «${head}${String(body).length > 160 ? '…' : ''}»` : ' · (без текста)');
+}
+
 let busy = 0;
 worker.on('active',    () => { busy++; });
-worker.on('completed', (job) => { busy = Math.max(0, busy - 1); console.log(`[done] ${job.name} #${job.id}`); });
-worker.on('failed',    (job, err) => { busy = Math.max(0, busy - 1); console.error(`[fail] ${job?.name} #${job?.id}: ${err.message}`); });
+worker.on('completed', (job) => {
+  busy = Math.max(0, busy - 1);
+  const took = job.processedOn ? ` ${((Date.now() - job.processedOn) / 1000).toFixed(1)}с` : '';
+  console.log(`[done] ${job.name} #${job.id}${took} · ${describe(job)}`);
+});
+// У провала описание нужнее, чем у успеха: без него «[fail] chat #2900» не даёт даже понять,
+// чью задачу мы потеряли и кому сообщать.
+worker.on('failed',    (job, err) => { busy = Math.max(0, busy - 1); console.error(`[fail] ${job?.name} #${job?.id}: ${err.message}${job ? ` · ${describe(job)}` : ''}`); });
 worker.on('error',     (err) => console.error('[worker] error', err.message));
 
 // --- Heartbeat в Redis (TTL): кто онлайн, на какой версии/модели, занятость ---

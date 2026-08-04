@@ -24,7 +24,34 @@ async function chat(messages, { model, format, temperature = 0.2 } = {}) {
   });
   if (!res.ok) throw new Error(`${cfg.backend} ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const j = await res.json();
-  return (oai ? j.choices?.[0]?.message?.content : j.message?.content) ?? '';
+  const content = (oai ? j.choices?.[0]?.message?.content : j.message?.content) ?? '';
+
+  // ПУСТОЙ ОТВЕТ БОЛЬШЕ НЕ ВЫДАЁТСЯ ЗА ОТВЕТ.
+  // Здесь стояло `?? ''`, и это был тихий сбой: модель упиралась в потолок токенов, content
+  // приходил пустым, а вызывающий получал валидную с виду пустую строку. linux-prestige на этом
+  // 04.08 сделал неверный вывод «локальная модель не тянет задачи, где нужно суждение» — хотя
+  // молчала не модель, молчал наш клиент.
+  //
+  // МЕХАНИЗМ. У думающей модели размышление и ответ делят ОДИН бюджет max_tokens (8192).
+  // Длинный промпт судьи → длинное размышление → бюджет исчерпан ДО первого знака ответа,
+  // finish_reason='length', content=''. Отсюда и повторяемость на одном и том же документе:
+  // это не случайность, а детерминированная длина рассуждения.
+  //
+  // Пустоту нельзя отличить от ответа ПО СОДЕРЖИМОМУ — только по finish_reason. Поэтому
+  // разбираем причину и говорим её словами: получатель не должен гадать.
+  const finish = oai ? j.choices?.[0]?.finish_reason : (j.done_reason || null);
+  if (!String(content).trim()) {
+    const used = j.usage ? ` (промпт ${j.usage.prompt_tokens}, сгенерировано ${j.usage.completion_tokens} из ${cfg.maxTokens})` : '';
+    if (finish === 'length')
+      throw new Error(`модель упёрлась в потолок max_tokens=${cfg.maxTokens} и не начала ответ${used}`
+        + ' — размышление съело весь бюджет. Лечится увеличением LLM_MAX_TOKENS либо более коротким промптом.');
+    throw new Error(`модель вернула ПУСТОЙ ответ, finish_reason=${finish || 'неизвестен'}${used}`);
+  }
+  // Обрыв на середине — тоже не успех: ответ выглядит целым, но это огрызок.
+  if (finish === 'length')
+    throw new Error(`ответ ОБОРВАН на потолке max_tokens=${cfg.maxTokens} (получено ${String(content).length} знаков)`
+      + ' — это не полный ответ. Увеличьте LLM_MAX_TOKENS или сократите задачу.');
+  return content;
 }
 
 module.exports = { chat };

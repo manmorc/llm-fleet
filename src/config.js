@@ -1,6 +1,23 @@
 require('dotenv').config();
 const os = require('os');
 const path = require('path');
+const fs = require('fs');
+
+// REDIS_URL из ~/.agent-bus/fleet.env, если его нет в окружении.
+// Тот же дефект, что был в mcp/bus-send.js: pm2-сервисы получают URL из ecosystem, а ручной
+// запуск (bin/fleet.js, скрипты, cron) — нет, и код молча уходил на localhost:6379, где Redis
+// нет ни на одной ноде флота. С ioredis это не ошибка, а ВЕЧНЫЙ РЕТРАЙ: `fleet submit` висел,
+// пока его не убивали снаружи, печатая ECONNREFUSED сотнями строк. Проверено на себе 04.08.
+// Файл лежит вне репозитория (там пароль) и есть на всех нодах — читатель общий, значение локальное.
+function fromFleetEnv(key) {
+  try {
+    for (const line of fs.readFileSync(path.join(os.homedir(), '.agent-bus', 'fleet.env'), 'utf8').split(/\r?\n/)) {
+      const m = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*$`));
+      if (m) return m[1];
+    }
+  } catch (_) {}
+  return null;
+}
 
 // Тиры (Routing v2): воркеры разнесены по очередям по «силе» модели.
 // strong — тяжёлые модели, fast — средние/лёгкие, embed — эмбеддинги (зарезервировано).
@@ -41,7 +58,9 @@ const legacyQueue = process.env.QUEUE;
 
 // Вся конфигурация воркера — из ENV (.env пишется install.sh). Минимум обязательного: REDIS_URL.
 module.exports = {
-  redisUrl:        process.env.REDIS_URL || 'redis://127.0.0.1:6379',
+  // Фолбэк на localhost оставлен ПОСЛЕДНИМ и осознанно: на ноде без fleet.env (свежая установка,
+  // локальный Redis в разработке) поведение прежнее. Но флотовые ноды теперь попадают в шину.
+  redisUrl:        process.env.REDIS_URL || fromFleetEnv('REDIS_URL') || 'redis://127.0.0.1:6379',
   tier,
   // queueName/queuePrefix — то, что отдаём в BullMQ. queue — полное человекочитаемое имя (llm:<tier> или legacy).
   queueName:       legacyQueue || tier,
