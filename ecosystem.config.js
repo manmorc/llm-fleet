@@ -35,7 +35,13 @@ module.exports = {
       env: { REDIS_URL, AGENT_ID: NODE_ID } },
     // 2) BullMQ LLM-воркер (боевой инференс флота: parseSignal/chat/echo)
     { ...common, name: `llm-worker-${NODE_ID}`, script: 'src/worker.js',
-      env: { NODE_ENV: 'production', REDIS_URL, MODEL, WORKER_ID: NODE_ID, CONCURRENCY: '1', LLM_BACKEND, LLM_URL, OLLAMA_URL } },
+      // LLM_MAX_TOKENS 16384 вместо дефолтных 8192. Причина — сбой 04.08: у думающей модели
+      // размышление и ответ делят ОДИН бюджет, и на длинном судейском промпте (3.5 КБ инструкций)
+      // бюджет кончался ДО первого знака ответа. Контекст у ноды 131072, так что 16384 — это
+      // потолок, а не расход: короткие задачи (разбор новостей) его не заметят. Больше не ставлю
+      // сознательно: потолок ограничивает и время худшей задачи, а в 10:15 UTC их прилетает до 515.
+      env: { NODE_ENV: 'production', REDIS_URL, MODEL, WORKER_ID: NODE_ID, CONCURRENCY: '1', LLM_BACKEND, LLM_URL, OLLAMA_URL,
+             LLM_MAX_TOKENS: process.env.LLM_MAX_TOKENS || L.LLM_MAX_TOKENS || '16384' } },
     // 3) автономный агент desktop-local (tool-use петля + judgment-mode, под надзором)
     { ...common, name: 'desktop-local-agent', script: 'agent/bus-agent.js',
       env: {
