@@ -99,7 +99,23 @@ async function apiCall(messages, { model, temperature = 0.2, noTools = false, no
       arguments: typeof (c.function && c.function.arguments) === 'string' ? safeJson(c.function.arguments) : ((c.function && c.function.arguments) || {}),
     },
   }));
+  // ПУСТОЙ ОТВЕТ РАЗЛИЧАЕМ ОТ ЗАКОНЧИВШЕГОСЯ БЮДЖЕТА.
+  // Здесь стояло `raw.content || ''` — тот же дефект, что был в src/ollama.js, но замаскированный
+  // сильнее: при вызове инструмента пустой текст НОРМАЛЕН, поэтому просто «бросить на пустоту»
+  // нельзя. Ловим точную комбинацию: текста нет И инструмент не вызван И модель упёрлась в потолок.
+  // Это не «модель промолчала», это «размышление съело весь max_tokens до первого знака» —
+  // у думающей модели они делят один бюджет. Без этой проверки петля получала пустую реплику,
+  // считала её ответом и шла дальше, а наружу выходил бессмысленный результат без причины.
+  const finish = oai ? (j.choices && j.choices[0] && j.choices[0].finish_reason) : (j.done_reason || null);
+  if (!String(raw.content || '').trim() && !calls.length && finish === 'length') {
+    const u = j.usage ? ` (промпт ${j.usage.prompt_tokens}, сгенерировано ${j.usage.completion_tokens})` : '';
+    const e = new Error(`модель упёрлась в потолок AGENT_MAX_TOKENS=${MAX_TOKENS} и не начала ответ${u}`
+      + ' — размышление съело весь бюджет. Поднимите AGENT_MAX_TOKENS или сократите задачу.');
+    e.tokenCeiling = true;
+    throw e;
+  }
   const norm = { role: 'assistant', content: raw.content || '', tool_calls: calls.length ? calls : undefined };
+  norm.finishReason = finish;
   Object.defineProperty(norm, '_raw', { value: raw, enumerable: false });
   return norm;
 }
