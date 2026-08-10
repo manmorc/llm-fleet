@@ -206,8 +206,26 @@ function llamaPids() {
 //      Владелец видел «выгружена», открывал диспетчер — память занята. Ровно его жалоба.
 // Стало: ждём, пока процессов не останется, и возвращаем ЧТО ИМЕННО произошло, включая тех, кто
 // выжил. deps — точки подмены для тестов: настоящий taskkill в тесте не погоняешь.
+// ЗАПАСНОЙ УБИЙЦА С ПОВЫШЕННЫМИ ПРАВАМИ.
+//
+// Корень бага «десятый раз не выгружается»: УРОВЕНЬ ЦЕЛОСТНОСТИ, а не права пользователя.
+// Если llama-server подняли из административной сессии (например, я из своей), процесс получает
+// высокий уровень. Ярлык на рабочем столе запускается Проводником БЕЗ повышения — и `taskkill`
+// оттуда получает отказ, хотя владелец процесса тот же makei. Отсюда и капризность: модель, поднятая
+// службой pm2, убивается прекрасно; поднятая из админской сессии — не убивается никогда.
+//
+// Задание планировщика `llm-model-kill` зарегистрировано с RunLevel Highest. Запустить УЖЕ
+// СУЩЕСТВУЮЩЕЕ задание обычный процесс имеет право — и это НЕ вызывает окно UAC. То есть ярлык
+// остаётся однокликовым, а убийство происходит с нужным уровнем.
+// Создать задание заново отсюда нельзя (для регистрации нужны права) — если его нет, честно
+// говорим об этом в причине отказа, а не молчим.
+function elevatedKill() {
+  execSync('schtasks /Run /TN "llm-model-kill"', { stdio: 'ignore', windowsHide: true });
+}
+
 async function stop({ timeoutMs = 20000, deps = {} } = {}) {
-  const kill = deps.kill || (() => execSync('taskkill /F /IM llama-server.exe', { stdio: 'ignore', windowsHide: true }));
+  const kill = deps.kill || (() => execSync('taskkill /F /IM llama-server.exe', { stdio: 'pipe', windowsHide: true }));
+  const kill2 = deps.elevatedKill || elevatedKill;
   const pids = deps.pids || llamaPids;
   const nap = deps.sleep || sleep;
 
@@ -215,17 +233,31 @@ async function stop({ timeoutMs = 20000, deps = {} } = {}) {
   if (!before.length) { serverPid = null; return { ok: true, wasLoaded: false, killed: [], waitedMs: 0 }; }
 
   let killErr = null;
-  try { kill(); } catch (e) { killErr = e; }
+  try { kill(); } catch (e) {
+    // stderr забираем В ТЕКСТ ошибки: со `stdio: 'ignore'` наружу выходило голое «Command failed»,
+    // и настоящая причина («Access is denied») терялась ровно там, где была нужна.
+    const detail = [e.stderr, e.stdout].map((b) => (b ? String(b).trim() : '')).filter(Boolean).join(' ');
+    killErr = new Error(detail || e.message);
+  }
+  // Первая попытка не взяла — пробуем через задание с повышенным уровнем. Ошибку здесь тоже
+  // копим, а не глотаем: если и это не сработало, владелец должен увидеть ОБЕ причины.
+  let elevErr = null;
+  if (killErr || pids().length) {
+    try { kill2(); } catch (e) { elevErr = e; }
+  }
 
   const t0 = Date.now();
   for (;;) {
     const left = pids();
     if (!left.length) { serverPid = null; return { ok: true, wasLoaded: true, killed: before, waitedMs: Date.now() - t0 }; }
     if (Date.now() - t0 >= timeoutMs) {
+      const reasons = [];
+      if (killErr) reasons.push(`обычный taskkill: ${killErr.message}`);
+      if (elevErr) reasons.push(`задание с повышенными правами (llm-model-kill): ${elevErr.message}`);
       return {
         ok: false, wasLoaded: true, killed: [], left, waitedMs: Date.now() - t0,
-        why: killErr ? `taskkill не сработал: ${killErr.message}`
-                     : `процесс не умер за ${Math.round(timeoutMs / 1000)} с (pid ${left.join(', ')})`,
+        why: reasons.length ? reasons.join(' ; ')
+                            : `процесс не умер за ${Math.round(timeoutMs / 1000)} с (pid ${left.join(', ')})`,
       };
     }
     await nap(300);

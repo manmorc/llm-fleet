@@ -101,6 +101,45 @@ function freshServer() {
       r.why || 'причина не названа');
   });
 
+  // ── 3b. ГЛАВНЫЙ ТЕСТ ЭТОГО БАГА: обычный taskkill отбит по правам, добивает задание с
+  //       повышенным уровнем. Ровно сценарий владельца: модель поднята из админской сессии,
+  //       ярлык запущен Проводником без повышения, «десятый раз не выгружается».
+  await withTempHome(async () => {
+    const server = freshServer();
+    let elevatedCalled = false, alive = true;
+    const r = await server.stop({
+      timeoutMs: 3000,
+      deps: {
+        kill: () => { throw new Error('Access is denied'); },
+        elevatedKill: () => { elevatedCalled = true; alive = false; },
+        pids: () => (alive ? [34208] : []),
+        sleep: () => Promise.resolve(),
+      },
+    });
+    check('отказ по правам → добивает через задание с повышенным уровнем',
+      r.ok === true && elevatedCalled && r.killed.includes(34208),
+      r.ok ? 'обычный kill отбит, повышенный сработал, процесс подтверждённо мёртв'
+           : `НЕ ДОБИЛ: elevated=${elevatedCalled}, ${r.why}`);
+  });
+
+  // ── 3c. Оба пути отказали → в причине обязаны быть ОБА, а не первый попавшийся.
+  //       Иначе владелец чинит не то: «нет прав» и «нет задания» лечатся по-разному.
+  await withTempHome(async () => {
+    const server = freshServer();
+    const r = await server.stop({
+      timeoutMs: 50,
+      deps: {
+        kill: () => { throw new Error('Access is denied'); },
+        elevatedKill: () => { throw new Error('ERROR: The system cannot find the file specified'); },
+        pids: () => [34208],
+        sleep: () => Promise.resolve(),
+      },
+    });
+    check('оба пути отказали → названы ОБА, а не первый',
+      r.ok === false && /denied/i.test(r.why || '') && /llm-model-kill/i.test(r.why || ''),
+      r.why || 'причина не названа');
+  });
+
   // ── 4. Гасить нечего — это успех, но БЕЗ ложного «выгрузил».
   //      Различие важно: «уже свободно» и «я освободил» — разные утверждения.
   await withTempHome(async () => {
