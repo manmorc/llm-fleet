@@ -43,7 +43,15 @@ async function done(msg) { if (msg) console.log(msg); try { await r.quit(); } ca
       // 3-й аргумент — тир назначения (llm:<tier>); по умолчанию fast.
       const tier = cfg.TIERS.includes(args[2]) ? args[2] : 'fast';
       const q = new Queue(tier, { connection: new IORedis(cfg.redisUrl, { maxRetriesPerRequest: null }), prefix: cfg.QUEUE_PREFIX });
-      const job = await q.add(args[0], tryJson(args[1]) || {}, { removeOnComplete: 200, removeOnFail: 200 });
+      // attempts/backoff — со стороны ОТПРАВИТЕЛЯ: это свойство задачи, воркер его назначить не может.
+      // 3 попытки с растущей паузой: отказы модели почти всегда транзиентные (грузится, слот занят,
+      // тихий режим). У воркера есть своя защита внутри обработчика, но она чужие задачи не покрывает —
+      // здесь мы отвечаем за свои.
+      const job = await q.add(args[0], tryJson(args[1]) || {}, {
+        removeOnComplete: 200, removeOnFail: 200,
+        attempts: parseInt(process.env.FLEET_ATTEMPTS || '3', 10),
+        backoff: { type: 'exponential', delay: 2000 },
+      });
       console.log(`Задача поставлена: #${job.id} ${args[0]} → ${cfg.queueFor(tier)}`);
       await q.close();
       return done();

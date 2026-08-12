@@ -69,6 +69,30 @@ function fromFleetEnv(key) {
 const say = (m) => { if (!QUIET) console.log(m); };
 
 // Время последнего входящего в логе. Формат строки персистера начинается с отметки времени в ISO.
+// ОТСТАВАНИЕ ПОТРЕБИТЕЛЯ, выделено отдельно — чтобы это можно было ИСПЫТАТЬ подставным клиентом.
+// Проверка без теста, доказывающего, что она ловит поломку, — не защита, а надежда: у нас уже был
+// тест на время, который не заваливал наивное решение, и негативный тест, зеленевший при полностью
+// сломанном окружении.
+// Возвращает {depth, oldestMin, problem} — problem заполнен, только если есть что чинить.
+async function queueLag(client, self, now) {
+  const depth = await client.llen(`agents:inbox:${self}`);
+  if (!depth) return { depth: 0, oldestMin: null, problem: null };
+  // Возраст САМОГО СТАРОГО показывает, как давно перестали забирать.
+  let oldestMin = null;
+  try {
+    const head = await client.lindex(`agents:inbox:${self}`, 0);
+    const ts = head ? (JSON.parse(head).ts || null) : null;
+    if (ts) oldestMin = Math.round((now - ts) / 60000);
+  } catch (_) {}
+  return {
+    depth, oldestMin,
+    problem: `В ОЧЕРЕДИ ЛЕЖАТ ${depth} НЕЗАБРАННЫХ входящих`
+      + (oldestMin !== null ? `, самое старое ${oldestMin} мин назад` : '')
+      + ' — персистер не забирает. Сообщения ЕЩЁ живы, но чтение разрушающее: перезапусти '
+      + `персистер (pm2 restart agent-bus-${self}) ДО того, как их заберут и потеряют.`,
+  };
+}
+
 function lastIncoming() {
   let text = '';
   try { text = fs.readFileSync(LOG, 'utf8'); } catch (_) { return null; }
@@ -79,7 +103,12 @@ function lastIncoming() {
   return { ts: m ? Date.parse(m[1]) : null, text: last.slice(0, 120), count: lines.length };
 }
 
-(async () => {
+// Тело проверки выполняем ТОЛЬКО при запуске из командной строки. Без этой оговорки простой
+// `require` модуля ради одной функции запускал всю проверку целиком: лез в Redis, печатал отчёт,
+// звал process.exit — и тест, импортирующий queueLag, падал бы по чужой причине.
+// Модуль обязан быть тихим при импорте: побочный эффект от require — это ловушка для того,
+// кто придёт следующим.
+if (require.main === module) (async () => {
   const now = Date.now();
   let bad = [];
 
@@ -128,6 +157,36 @@ function lastIncoming() {
     }
   }
 
+  // 4. ОТСТАВАНИЕ ПОТРЕБИТЕЛЯ: сколько сообщений ЛЕЖИТ В ОЧЕРЕДИ НЕЗАБРАННЫМИ.
+  //
+  // Пункты выше смотрят на ФАЙЛ ЛОГА, и в этом их слепое пятно: если персистер мёртв, сообщения
+  // копятся в Redis, а лог просто перестаёт расти. «Лог не менялся 3 часа» при живом эфире и при
+  // мёртвом персистере выглядит ОДИНАКОВО — а это противоположные ситуации.
+  //
+  // Различает их только длина входящей очереди. Ноль = действительно тихо. Больше нуля = кто-то
+  // прислал, а забрать некому: сообщения ждут, и никто об этом не знает.
+  //
+  // Особая цена этой проверки в том, что чтение у нас РАЗРУШАЮЩЕЕ (BLPOP): забранное сообщение
+  // исчезает из Redis навсегда. Пока оно в очереди — его ещё можно спасти; после — уже нет.
+  try {
+    const IORedis = require('ioredis');
+    const url = process.env.REDIS_URL || fromFleetEnv('REDIS_URL');
+    if (!url) say('  · очередь: REDIS_URL неизвестен, глубину не проверить');
+    else {
+      const r = new IORedis(url, { maxRetriesPerRequest: 2, connectTimeout: 5000, commandTimeout: 5000,
+        retryStrategy: (n) => (n > 2 ? null : 300) });
+      r.on('error', () => {});
+      try {
+        const lag = await queueLag(r, SELF, now);
+        if (lag.problem) { bad.push(lag.problem); say(`  ✗ очередь: ${lag.depth} незабранных`); }
+        else say('  ✓ очередь: незабранных входящих нет');
+      } finally { try { await r.quit(); } catch (_) { try { r.disconnect(); } catch (__) {} } }
+    }
+  } catch (e) {
+    // Недоступность Redis сама по себе не «шина сломана» — но и молчать нельзя: проверка не сделана.
+    say(`  · очередь: проверить не удалось (${(e.message || '').slice(0, 60)})`);
+  }
+
   say('');
   if (bad.length) {
     console.error('✗ НАБЛЮДЕНИЕ ЗА ШИНОЙ НАРУШЕНО:');
@@ -139,3 +198,6 @@ function lastIncoming() {
   }
   console.log('✓ наблюдение за шиной исправно: вотчер жив, непросмотренных входящих нет');
 })();
+
+// Экспорт для тестов. CLI-поведение не меняется: скрипт как исполнялся, так и исполняется.
+module.exports = { queueLag };

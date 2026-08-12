@@ -26,11 +26,47 @@ const vram = detectVram();
 
 const connection = new IORedis(cfg.redisUrl, { maxRetriesPerRequest: null });
 
+// ПОВТОР ТРАНЗИЕНТНЫХ СБОЕВ ВНУТРИ ОБРАБОТЧИКА.
+//
+// У BullMQ подтверждение неявное: возврат из функции = обработано, исключение = провал. Смерть
+// воркера он переживает сам (блокировка протухает, задача возвращается в очередь), а вот
+// БРОШЕННУЮ ОШИБКУ не повторяет: `attempts` по умолчанию равен единице. Получается асимметрия —
+// «хотя бы один раз» при падении процесса, но «не более одного раза» при ошибке.
+//
+// Для вызова модели это неверно: почти все её отказы транзиентные — сервер грузится, слот занят,
+// упёрлись в таймаут, тихий режим включили посреди пачки. Задача, провалившаяся по такой причине,
+// обязана повториться.
+//
+// Почему здесь, а не через attempts у отправителя: attempts — свойство ЗАДАЧИ, его ставит тот, кто
+// её кладёт. Отправители у нас чужие (trading_portal на linux-prestige), и полагаться на то, что
+// все они однажды выставят нужный флаг, нельзя. Своя защита не зависит от чужой доброй воли —
+// тот же принцип, по которому логирование задач сделано у себя, а не через чужой removeOnComplete.
+// Отправительский attempts при этом не мешает: он добавит ещё один слой поверх.
+//
+// НЕ повторяем то, что повтором не лечится: неизвестный скил, неверный payload. Отличаем по тексту
+// ошибки, а не по типу — типов у нас нет.
+const RETRIES = parseInt(process.env.WORKER_RETRIES || '3', 10);
+const PERMANENT = /неизвестный скил|invalid|не найден|malformed|unsupported/i;
+
 const worker = new Worker(cfg.queueName, async (job) => {
   const skill = skills.get(job.name);
   if (!skill) throw new Error(`Неизвестный скил: ${job.name} (есть: ${skills.list().join(', ')})`);
-  // ctx даёт скилу унифицированный доступ к модели — скилы не зависят от транспорта
-  return skill.run(job.data, { model: job.data?._model || cfg.model, chat });
+  let lastErr;
+  for (let attempt = 1; attempt <= RETRIES; attempt++) {
+    try {
+      // ctx даёт скилу унифицированный доступ к модели — скилы не зависят от транспорта
+      return await skill.run(job.data, { model: job.data?._model || cfg.model, chat });
+    } catch (e) {
+      lastErr = e;
+      if (PERMANENT.test(e.message || '')) throw e;          // повтор не поможет
+      if (attempt === RETRIES) break;
+      // Пауза растёт: если модель грузится (~10-40 с), второй заход не должен биться в неё сразу.
+      const waitMs = 2000 * 2 ** (attempt - 1);
+      console.warn(`[retry] ${job.name} #${job.id} попытка ${attempt}/${RETRIES} не удалась: ${(e.message || '').slice(0, 90)} — повтор через ${waitMs / 1000} с`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr;
 }, { connection, concurrency: cfg.concurrency, prefix: cfg.queuePrefix });
 
 // ЧТО ИМЕННО СЧИТАЛА МОДЕЛЬ — раньше в логе был только номер: «[done] chat #2900».
