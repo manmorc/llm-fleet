@@ -87,7 +87,21 @@ async function taskCounter() {
 
 // Готовность — ТОЛЬКО реальной генерацией. /v1/models отвечает ДО загрузки модели, а curl без -f
 // возвращает 0 даже на 503 «Loading model» → обе проверки дают ложную «готовность» (BENCHMARK, грабли 3-4).
-async function probe(timeoutMs = 8000) {
+// Таймаут проверки живости. 8 с зашиты под gpt-oss-20b, которая целиком лежит в видеопамяти и
+// отвечает мгновенно. Модель, стримящаяся с диска (120B — 59 ГБ, 284B — 155 ГБ), физически не
+// успевает ответить за 8 с на холодную: один только разбор промпта идёт секунды. Агент при этом
+// говорил «модель не отвечает» про живой сервер, который в ту же секунду отвечал на curl.
+// Тот же класс, что бюджет компакта 7000 и потолок вывода 8000: константа под старые условия
+// пережила рост и стала тихо врать.
+const PROBE_MS = parseInt(process.env.LLAMA_PROBE_TIMEOUT_MS || '8000', 10);
+// Быстрая проверка перед решением «поднимать ли»: по умолчанию 4 с, чтобы не тормозить обычный
+// путь. Но если оператор ЗАДАЛ таймаут явно, он относится и к ней — иначе настройка бесполезна:
+// именно этот вызов с зашитой четвёркой и отвергал живую 120B, пока probe() с новым таймаутом
+// прекрасно отвечала. Настраиваемая величина, перекрытая константой на месте вызова, — это
+// не настройка, а её видимость.
+const PROBE_FAST_MS = process.env.LLAMA_PROBE_TIMEOUT_MS ? PROBE_MS : 4000;
+
+async function probe(timeoutMs = PROBE_MS) {
   try {
     const ctl = AbortSignal.timeout(timeoutMs);
     const res = await fetch(`${BASE}/v1/chat/completions`, {
@@ -127,14 +141,14 @@ async function ensure({ log = () => {} } = {}) {
       + 'Выключить — ярлык «Модель ВКЛ» на рабочем столе или `node agent/quiet.js off`.');
   }
   touchActivity();   // любой запрос = активность (сброс idle-таймера watchdog'а), даже если модель уже тёплая
-  if (await probe(4000)) return true;
+  if (await probe(PROBE_FAST_MS)) return true;
   if (!AUTOSTART) throw new Error(`модель не отвечает на ${BASE} и LLAMA_AUTOSTART=0`);
   if (inFlight) return inFlight;
   // Сервер поднят нами и жив, но probe не ответил за 4 с → он ЗАГРУЖАЕТСЯ или ЗАНЯТ генерацией,
   // а не умер. Спавнить второй на тот же порт нельзя (не забиндится и умрёт) — ждём этот, дольше.
   if (pidAlive(serverPid)) {
-    for (let i = 0; i < 30 && pidAlive(serverPid); i++) { if (await probe(8000)) return true; await sleep(1000); }
-    if (await probe(8000)) return true;
+    for (let i = 0; i < 30 && pidAlive(serverPid); i++) { if (await probe(PROBE_MS)) return true; await sleep(1000); }
+    if (await probe(PROBE_MS)) return true;
   }
   inFlight = (async () => {
     if (!fs.existsSync(EXE)) throw new Error(`нет llama-server: ${EXE}`);

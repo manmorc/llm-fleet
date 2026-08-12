@@ -138,6 +138,20 @@ function runCheck(dir, check) {
 }
 
 (async () => {
+  // СНАЧАЛА СПРОСИТЬ У СЕРВЕРА, ЧТО ОН ТАКОЕ. Замер, сравнивающий две модели, обязан убедиться,
+  // что они стоят в одинаковых условиях, — иначе он меряет конфигурацию, а не модель. Проверено
+  // на себе: 4 из 8 у 120B оказались следствием контекста 8192 против 131072 у соперницы.
+  // BENCH_EXPECT_CTX задаёт ожидание явно; без него берём LLAMA_CTX, то есть то, на что рассчитан
+  // потолок вывода инструментов.
+  {
+    const { preflight } = require('./preflight');
+    const url = process.env.AGENT_API_URL || process.env.LLM_URL || 'http://127.0.0.1:8081/v1';
+    const expectCtx = parseInt(process.env.BENCH_EXPECT_CTX || process.env.LLAMA_CTX || '131072', 10);
+    try {
+      await preflight({ url, expectCtx, expectModelSubstr: process.env.BENCH_EXPECT_MODEL || null, log });
+    } catch (e) { log(e.message); process.exit(2); }
+  }
+
   const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null;
   const base = only ? TASKS.filter((t) => t.id === only) : TASKS;
   // ПОВТОРЫ — не роскошь, а условие достоверности. Одиночные прогоны дали 6/8 и 5/8 на одной и той же

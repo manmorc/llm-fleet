@@ -72,6 +72,49 @@ function buildSystemPrompt({ skeptic } = {}) {
 
 // Один вызов бэкенда → НОРМАЛИЗОВАННОЕ сообщение {role, content, tool_calls:[{id, function:{name, arguments:ОБЪЕКТ}}]}.
 // Сырой ответ бэкенда прикреплён как _raw — его и кладём обратно в историю (бэкенд ждёт свой формат).
+// ЗАПРОС К МОДЕЛИ БЕЗ НЕВИДИМОГО ПОТОЛКА ВРЕМЕНИ.
+//
+// Встроенный fetch в Node обрывает запрос через 5 минут (headersTimeout в undici) и НАСТРОЙКЕ
+// не поддаётся: AbortSignal умеет только укоротить срок, не продлить. Пока модель жила в
+// видеопамяти и отвечала за секунды, этого никто не замечал. На gpt-oss-120b с полным контекстом
+// обработка промпта на 3 тысячи токенов идёт ~4 минуты, и запрос перестаёт укладываться: клиент
+// отваливается, сервер пишет «cancel task», петля делает три попытки и объявляет задачу
+// проваленной. Со стороны это выглядит как «модель не справилась» — снова свойство обвязки,
+// выданное за свойство модели.
+//
+// Лечим штатным модулем HTTP: там таймаут задаётся явно, по умолчанию его нет вовсе.
+// Новую зависимость (undici) в общий репозиторий флота ради этого не тянем.
+const http = require('http');
+const AGENT_HTTP_TIMEOUT_MS = parseInt(process.env.AGENT_HTTP_TIMEOUT_MS || '1800000', 10); // 30 мин
+
+function postJsonLong(urlStr, payload, timeoutMs = AGENT_HTTP_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const data = Buffer.from(JSON.stringify(payload));
+    const req = http.request({
+      hostname: u.hostname, port: u.port || 80, path: u.pathname + u.search, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': data.length },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          text: async () => text,
+          json: async () => JSON.parse(text),
+        });
+      });
+    });
+    // Таймаут считается от БЕЗДЕЙСТВИЯ сокета, а не от начала запроса: пока сервер молча считает,
+    // данные не идут, поэтому берём заведомо больший срок, чем самый долгий разбор промпта.
+    req.setTimeout(timeoutMs, () => { req.destroy(new Error(`нет ответа за ${Math.round(timeoutMs / 60000)} мин`)); });
+    req.on('error', reject);
+    req.end(data);
+  });
+}
+
 async function apiCall(messages, { model, temperature = 0.2, noTools = false, noThink = false, json = false } = {}) {
   const oai = isOAI();
   const url = oai ? `${API_URL}/chat/completions` : `${API_URL}/api/chat`;
@@ -87,7 +130,7 @@ async function apiCall(messages, { model, temperature = 0.2, noTools = false, no
   // в спираль на 15k символов и отдаёт пустой ответ). Даёт 3.3× (6с vs 20с), tool_calls не ломает.
   // ☠️ ТОЛЬКО для structure: без черновика многошаговый счёт врёт (замер: 552 вместо 506, за 0с).
   if (oai && noThink) body.chat_template_kwargs = { enable_thinking: false };
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await postJsonLong(url, body);
   if (!res.ok) { const t = await res.text().catch(() => ''); const e = new Error(`api ${res.status}: ${t.slice(0, 120)}`); e.status = res.status; throw e; }
   const j = await res.json();
   const raw = (oai ? (j.choices && j.choices[0] && j.choices[0].message) : j.message) || {};
