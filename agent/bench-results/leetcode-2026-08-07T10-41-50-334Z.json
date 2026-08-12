@@ -1,0 +1,200 @@
+[
+  {
+    "path": "harness",
+    "secs": 54.452,
+    "extract": "файл",
+    "steps": 4,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "первый пример",
+          "ok": true,
+          "got": "4",
+          "want": "4"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "10",
+          "want": "10"
+        },
+        {
+          "note": "нет внутренних ячеек",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна ячейка",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "утечка через дыру в стене",
+          "ok": true,
+          "got": "14",
+          "want": "14"
+        },
+        {
+          "note": "глубокий колодец",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "наклонная плоскость — воды нет",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 7,
+      "total": 7,
+      "perf": {
+        "ms": 25,
+        "limitMs": 3000,
+        "correct": true,
+        "why": "200x200 со стеной по краю — 39204 ячеек воды, нужен эффективный обход",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Запустил тесты, оба примера прошли успешно:\n\n```\nTest 1: PASS (got 4, expected 4)\nTest 2: PASS (got 10, expected 10)\n```\n\nФайл `solution-trap-rain-water-2d.js` содержит корректную реализацию функции `trapRainWater`.",
+    "problem": "trap-rain-water-2d",
+    "run": 1
+  },
+  {
+    "path": "harness",
+    "secs": 49.142,
+    "extract": "файл",
+    "steps": 6,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "первый пример",
+          "ok": true,
+          "got": "4",
+          "want": "4"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "10",
+          "want": "10"
+        },
+        {
+          "note": "нет внутренних ячеек",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна ячейка",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "утечка через дыру в стене",
+          "ok": true,
+          "got": "14",
+          "want": "14"
+        },
+        {
+          "note": "глубокий колодец",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "наклонная плоскость — воды нет",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 7,
+      "total": 7,
+      "perf": {
+        "ms": 257,
+        "limitMs": 3000,
+        "correct": true,
+        "why": "200x200 со стеной по краю — 39204 ячеек воды, нужен эффективный обход",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Функция `trapRainWater` реализована в файле `solution-trap-rain-water-2d.js`. Тесты в `test-trap-rain-water-2d.js` успешно проходят, выводя ожидаемые результаты.",
+    "problem": "trap-rain-water-2d",
+    "run": 2
+  },
+  {
+    "path": "harness",
+    "secs": 76.715,
+    "extract": "файл",
+    "steps": 6,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "первый пример",
+          "ok": true,
+          "got": "4",
+          "want": "4"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "10",
+          "want": "10"
+        },
+        {
+          "note": "нет внутренних ячеек",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна ячейка",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "утечка через дыру в стене",
+          "ok": true,
+          "got": "14",
+          "want": "14"
+        },
+        {
+          "note": "глубокий колодец",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "наклонная плоскость — воды нет",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 7,
+      "total": 7,
+      "perf": {
+        "ms": 12,
+        "limitMs": 3000,
+        "correct": true,
+        "why": "200x200 со стеной по краю — 39204 ячеек воды, нужен эффективный обход",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Файл `solution-trap-rain-water-2d.js` содержит корректную функцию `trapRainWater`. Тесты успешно проходят: все примеры дают ожидаемые результаты.",
+    "problem": "trap-rain-water-2d",
+    "run": 3
+  }
+]

@@ -1,0 +1,1091 @@
+[
+  {
+    "path": "raw",
+    "secs": 4.643,
+    "extract": "блок кода (1)",
+    "chars": 533,
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "6",
+          "want": "6"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "пустой массив",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "один столбик",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "плато без ямы",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго убывающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго возрастающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна глубокая яма",
+          "ok": true,
+          "got": "5",
+          "want": "5"
+        },
+        {
+          "note": "все нули",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 9,
+      "total": 9,
+      "perf": {
+        "ms": 0,
+        "limitMs": 250,
+        "correct": true,
+        "why": "40k пилообразных столбиков: O(n) укладывается в единицы мс, O(n²) требует секунд",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction trap(height) {\n    let left = 0, right = height.length - 1;\n    let leftMax = 0, rightMax = 0;\n    let water = 0;\n    while (left < right) {\n        if (height[left] < height[right]) {\n            if (height[left] >= leftMax) leftMax = height[left];\n            else water += leftMax - height[left];\n            left++;\n        } else {\n            if (height[right] >= rightMax) rightMax = height[right];\n            else water += rightMax - height[right];\n            right--;\n        }\n    }\n    return water;\n}\n```",
+    "problem": "trap-rain-water",
+    "run": 1
+  },
+  {
+    "path": "raw",
+    "secs": 4.493,
+    "extract": "блок кода (1)",
+    "chars": 533,
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "6",
+          "want": "6"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "пустой массив",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "один столбик",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "плато без ямы",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго убывающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго возрастающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна глубокая яма",
+          "ok": true,
+          "got": "5",
+          "want": "5"
+        },
+        {
+          "note": "все нули",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 9,
+      "total": 9,
+      "perf": {
+        "ms": 0,
+        "limitMs": 250,
+        "correct": true,
+        "why": "40k пилообразных столбиков: O(n) укладывается в единицы мс, O(n²) требует секунд",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction trap(height) {\n    let left = 0, right = height.length - 1;\n    let leftMax = 0, rightMax = 0;\n    let water = 0;\n    while (left < right) {\n        if (height[left] < height[right]) {\n            if (height[left] >= leftMax) leftMax = height[left];\n            else water += leftMax - height[left];\n            left++;\n        } else {\n            if (height[right] >= rightMax) rightMax = height[right];\n            else water += rightMax - height[right];\n            right--;\n        }\n    }\n    return water;\n}\n```",
+    "problem": "trap-rain-water",
+    "run": 2
+  },
+  {
+    "path": "raw",
+    "secs": 4.384,
+    "extract": "блок кода (1)",
+    "chars": 533,
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "6",
+          "want": "6"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "пустой массив",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "один столбик",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "плато без ямы",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго убывающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго возрастающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна глубокая яма",
+          "ok": true,
+          "got": "5",
+          "want": "5"
+        },
+        {
+          "note": "все нули",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 9,
+      "total": 9,
+      "perf": {
+        "ms": 0,
+        "limitMs": 250,
+        "correct": true,
+        "why": "40k пилообразных столбиков: O(n) укладывается в единицы мс, O(n²) требует секунд",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction trap(height) {\n    let left = 0, right = height.length - 1;\n    let leftMax = 0, rightMax = 0;\n    let total = 0;\n    while (left < right) {\n        if (height[left] < height[right]) {\n            if (height[left] >= leftMax) leftMax = height[left];\n            else total += leftMax - height[left];\n            left++;\n        } else {\n            if (height[right] >= rightMax) rightMax = height[right];\n            else total += rightMax - height[right];\n            right--;\n        }\n    }\n    return total;\n}\n```",
+    "problem": "trap-rain-water",
+    "run": 3
+  },
+  {
+    "path": "harness",
+    "secs": 38.093,
+    "extract": "файл",
+    "steps": 6,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "6",
+          "want": "6"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "пустой массив",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "один столбик",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "плато без ямы",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго убывающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго возрастающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна глубокая яма",
+          "ok": true,
+          "got": "5",
+          "want": "5"
+        },
+        {
+          "note": "все нули",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 9,
+      "total": 9,
+      "perf": {
+        "ms": 0,
+        "limitMs": 250,
+        "correct": true,
+        "why": "40k пилообразных столбиков: O(n) укладывается в единицы мс, O(n²) требует секунд",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение: создал файл `solution-trap-rain-water.js` с функцией `trap`, добавил экспорт, написал тесты в `test-trap.js` и успешно запустил их. Все тесты прошли, результат соответствует примерам из условия.",
+    "problem": "trap-rain-water",
+    "run": 1
+  },
+  {
+    "path": "harness",
+    "secs": 22.18,
+    "extract": "файл",
+    "steps": 4,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "6",
+          "want": "6"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "пустой массив",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "один столбик",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "плато без ямы",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго убывающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго возрастающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна глубокая яма",
+          "ok": true,
+          "got": "5",
+          "want": "5"
+        },
+        {
+          "note": "все нули",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 9,
+      "total": 9,
+      "perf": {
+        "ms": 1,
+        "limitMs": 250,
+        "correct": true,
+        "why": "40k пилообразных столбиков: O(n) укладывается в единицы мс, O(n²) требует секунд",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Все тесты прошли успешно: 6/6. Функция `trap` реализована с двух указателей и работает за O(n) времени.",
+    "problem": "trap-rain-water",
+    "run": 2
+  },
+  {
+    "path": "harness",
+    "secs": 33.344,
+    "extract": "файл",
+    "steps": 6,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "6",
+          "want": "6"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "пустой массив",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "один столбик",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "плато без ямы",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго убывающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "строго возрастающий",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна глубокая яма",
+          "ok": true,
+          "got": "5",
+          "want": "5"
+        },
+        {
+          "note": "все нули",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 9,
+      "total": 9,
+      "perf": {
+        "ms": 0,
+        "limitMs": 250,
+        "correct": true,
+        "why": "40k пилообразных столбиков: O(n) укладывается в единицы мс, O(n²) требует секунд",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Функция `trap` реализована с двух‑указателем, работает за O(n). Тесты прошли успешно:  \n\n```\nheight=[0,1,0,2,1,0,1,3,2,1,2,1] => 6 (expected 6)\nheight=[4,2,0,3,2,5] => 9 (expected 9)\nheight=[] => 0 (expected 0)\nheight=[1] => 0 (expected 0)\nheight=[2,0,2] => 2 (expected 2)\n```\n\nФайл `solution-trap-rain-water.js` содержит только функцию `trap` и экспорт.",
+    "problem": "trap-rain-water",
+    "run": 3
+  },
+  {
+    "path": "raw",
+    "secs": 5.186,
+    "extract": "блок кода (1)",
+    "chars": 521,
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "[3,3,5,5,6,7]",
+          "want": "[3,3,5,5,6,7]"
+        },
+        {
+          "note": "один элемент",
+          "ok": true,
+          "got": "[1]",
+          "want": "[1]"
+        },
+        {
+          "note": "убывающий",
+          "ok": true,
+          "got": "[9,8]",
+          "want": "[9,8]"
+        },
+        {
+          "note": "окно 1, есть отрицательное",
+          "ok": true,
+          "got": "[1,-1]",
+          "want": "[1,-1]"
+        },
+        {
+          "note": "максимум уходит из окна",
+          "ok": true,
+          "got": "[7,4]",
+          "want": "[7,4]"
+        },
+        {
+          "note": "все отрицательные в начале",
+          "ok": true,
+          "got": "[7,7,7,7,7]",
+          "want": "[7,7,7,7,7]"
+        },
+        {
+          "note": "максимум выпадает несколько раз",
+          "ok": true,
+          "got": "[3,3,2,5]",
+          "want": "[3,3,2,5]"
+        },
+        {
+          "note": "все одинаковые — ловушка дедупликации",
+          "ok": true,
+          "got": "[4,4,4]",
+          "want": "[4,4,4]"
+        }
+      ],
+      "passed": 8,
+      "total": 8,
+      "perf": {
+        "ms": 4,
+        "limitMs": 200,
+        "correct": true,
+        "why": "60k элементов при k=15000: O(n) это единицы мс, O(n·k) — около секунды",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction maxSlidingWindow(nums, k) {\n  const n = nums.length;\n  if (n === 0 || k === 0) return [];\n  const deque = []; // store indices\n  const res = [];\n\n  for (let i = 0; i < n; i++) {\n    // remove indices out of window\n    if (deque.length && deque[0] <= i - k) deque.shift();\n\n    // maintain decreasing order\n    while (deque.length && nums[deque[deque.length - 1]] < nums[i]) {\n      deque.pop();\n    }\n\n    deque.push(i);\n\n    if (i >= k - 1) {\n      res.push(nums[deque[0]]);\n    }\n  }\n\n  return res;\n}\n```",
+    "problem": "sliding-window-max",
+    "run": 1
+  },
+  {
+    "path": "raw",
+    "secs": 4.931,
+    "extract": "блок кода (1)",
+    "chars": 632,
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "[3,3,5,5,6,7]",
+          "want": "[3,3,5,5,6,7]"
+        },
+        {
+          "note": "один элемент",
+          "ok": true,
+          "got": "[1]",
+          "want": "[1]"
+        },
+        {
+          "note": "убывающий",
+          "ok": true,
+          "got": "[9,8]",
+          "want": "[9,8]"
+        },
+        {
+          "note": "окно 1, есть отрицательное",
+          "ok": true,
+          "got": "[1,-1]",
+          "want": "[1,-1]"
+        },
+        {
+          "note": "максимум уходит из окна",
+          "ok": true,
+          "got": "[7,4]",
+          "want": "[7,4]"
+        },
+        {
+          "note": "все отрицательные в начале",
+          "ok": true,
+          "got": "[7,7,7,7,7]",
+          "want": "[7,7,7,7,7]"
+        },
+        {
+          "note": "максимум выпадает несколько раз",
+          "ok": true,
+          "got": "[3,3,2,5]",
+          "want": "[3,3,2,5]"
+        },
+        {
+          "note": "все одинаковые — ловушка дедупликации",
+          "ok": true,
+          "got": "[4,4,4]",
+          "want": "[4,4,4]"
+        }
+      ],
+      "passed": 8,
+      "total": 8,
+      "perf": {
+        "ms": 3,
+        "limitMs": 200,
+        "correct": true,
+        "why": "60k элементов при k=15000: O(n) это единицы мс, O(n·k) — около секунды",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction maxSlidingWindow(nums, k) {\n    const n = nums.length;\n    const res = [];\n    const deque = []; // store indices, decreasing values\n\n    for (let i = 0; i < n; i++) {\n        // Remove indices out of the current window\n        while (deque.length && deque[0] <= i - k) deque.shift();\n\n        // Remove indices whose corresponding values are less than nums[i]\n        while (deque.length && nums[deque[deque.length - 1]] < nums[i]) deque.pop();\n\n        deque.push(i);\n\n        // Start adding to result once the first window is complete\n        if (i >= k - 1) res.push(nums[deque[0]]);\n    }\n\n    return res;\n}\n```",
+    "problem": "sliding-window-max",
+    "run": 2
+  },
+  {
+    "path": "raw",
+    "secs": 4.535,
+    "extract": "блок кода (1)",
+    "chars": 507,
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "[3,3,5,5,6,7]",
+          "want": "[3,3,5,5,6,7]"
+        },
+        {
+          "note": "один элемент",
+          "ok": true,
+          "got": "[1]",
+          "want": "[1]"
+        },
+        {
+          "note": "убывающий",
+          "ok": true,
+          "got": "[9,8]",
+          "want": "[9,8]"
+        },
+        {
+          "note": "окно 1, есть отрицательное",
+          "ok": true,
+          "got": "[1,-1]",
+          "want": "[1,-1]"
+        },
+        {
+          "note": "максимум уходит из окна",
+          "ok": true,
+          "got": "[7,4]",
+          "want": "[7,4]"
+        },
+        {
+          "note": "все отрицательные в начале",
+          "ok": true,
+          "got": "[7,7,7,7,7]",
+          "want": "[7,7,7,7,7]"
+        },
+        {
+          "note": "максимум выпадает несколько раз",
+          "ok": true,
+          "got": "[3,3,2,5]",
+          "want": "[3,3,2,5]"
+        },
+        {
+          "note": "все одинаковые — ловушка дедупликации",
+          "ok": true,
+          "got": "[4,4,4]",
+          "want": "[4,4,4]"
+        }
+      ],
+      "passed": 8,
+      "total": 8,
+      "perf": {
+        "ms": 4,
+        "limitMs": 200,
+        "correct": true,
+        "why": "60k элементов при k=15000: O(n) это единицы мс, O(n·k) — около секунды",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction maxSlidingWindow(nums, k) {\n    const n = nums.length;\n    const res = [];\n    const deque = []; // store indices, decreasing values\n    for (let i = 0; i < n; i++) {\n        // remove indices out of window\n        if (deque.length && deque[0] <= i - k) deque.shift();\n        // maintain decreasing order\n        while (deque.length && nums[deque[deque.length - 1]] <= nums[i]) deque.pop();\n        deque.push(i);\n        if (i >= k - 1) res.push(nums[deque[0]]);\n    }\n    return res;\n}\n```",
+    "problem": "sliding-window-max",
+    "run": 3
+  },
+  {
+    "path": "harness",
+    "secs": 15.3,
+    "extract": "файл",
+    "steps": 4,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "[3,3,5,5,6,7]",
+          "want": "[3,3,5,5,6,7]"
+        },
+        {
+          "note": "один элемент",
+          "ok": true,
+          "got": "[1]",
+          "want": "[1]"
+        },
+        {
+          "note": "убывающий",
+          "ok": true,
+          "got": "[9,8]",
+          "want": "[9,8]"
+        },
+        {
+          "note": "окно 1, есть отрицательное",
+          "ok": true,
+          "got": "[1,-1]",
+          "want": "[1,-1]"
+        },
+        {
+          "note": "максимум уходит из окна",
+          "ok": true,
+          "got": "[7,4]",
+          "want": "[7,4]"
+        },
+        {
+          "note": "все отрицательные в начале",
+          "ok": true,
+          "got": "[7,7,7,7,7]",
+          "want": "[7,7,7,7,7]"
+        },
+        {
+          "note": "максимум выпадает несколько раз",
+          "ok": true,
+          "got": "[3,3,2,5]",
+          "want": "[3,3,2,5]"
+        },
+        {
+          "note": "все одинаковые — ловушка дедупликации",
+          "ok": true,
+          "got": "[4,4,4]",
+          "want": "[4,4,4]"
+        }
+      ],
+      "passed": 8,
+      "total": 8,
+      "perf": {
+        "ms": 4,
+        "limitMs": 200,
+        "correct": true,
+        "why": "60k элементов при k=15000: O(n) это единицы мс, O(n·k) — около секунды",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Файл `solution-sliding-window-max.js` содержит корректную реализацию функции `maxSlidingWindow` с использованием очереди (deque), обеспечивающей O(n) сложность. Тестовый скрипт `test-max-window.js` выводит `[3, 3, 5, 5, 6, 7]`, как и ожидается.",
+    "problem": "sliding-window-max",
+    "run": 1
+  },
+  {
+    "path": "harness",
+    "secs": 29.955,
+    "extract": "файл",
+    "steps": 6,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "[3,3,5,5,6,7]",
+          "want": "[3,3,5,5,6,7]"
+        },
+        {
+          "note": "один элемент",
+          "ok": true,
+          "got": "[1]",
+          "want": "[1]"
+        },
+        {
+          "note": "убывающий",
+          "ok": true,
+          "got": "[9,8]",
+          "want": "[9,8]"
+        },
+        {
+          "note": "окно 1, есть отрицательное",
+          "ok": true,
+          "got": "[1,-1]",
+          "want": "[1,-1]"
+        },
+        {
+          "note": "максимум уходит из окна",
+          "ok": true,
+          "got": "[7,4]",
+          "want": "[7,4]"
+        },
+        {
+          "note": "все отрицательные в начале",
+          "ok": true,
+          "got": "[7,7,7,7,7]",
+          "want": "[7,7,7,7,7]"
+        },
+        {
+          "note": "максимум выпадает несколько раз",
+          "ok": true,
+          "got": "[3,3,2,5]",
+          "want": "[3,3,2,5]"
+        },
+        {
+          "note": "все одинаковые — ловушка дедупликации",
+          "ok": true,
+          "got": "[4,4,4]",
+          "want": "[4,4,4]"
+        }
+      ],
+      "passed": 8,
+      "total": 8,
+      "perf": {
+        "ms": 5,
+        "limitMs": 200,
+        "correct": true,
+        "why": "60k элементов при k=15000: O(n) это единицы мс, O(n·k) — около секунды",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Файл `solution-sliding-window-max.js` содержит корректную реализацию функции `maxSlidingWindow` с использованием очереди (deque) и экспорте модуля. Тестовый скрипт выводит ожидаемый результат `[3, 3, 5, 5, 6, 7]`.",
+    "problem": "sliding-window-max",
+    "run": 2
+  },
+  {
+    "path": "harness",
+    "secs": 22.911,
+    "extract": "файл",
+    "steps": 4,
+    "tools": [],
+    "verdict": {
+      "cases": [
+        {
+          "note": "пример из условия",
+          "ok": true,
+          "got": "[3,3,5,5,6,7]",
+          "want": "[3,3,5,5,6,7]"
+        },
+        {
+          "note": "один элемент",
+          "ok": true,
+          "got": "[1]",
+          "want": "[1]"
+        },
+        {
+          "note": "убывающий",
+          "ok": true,
+          "got": "[9,8]",
+          "want": "[9,8]"
+        },
+        {
+          "note": "окно 1, есть отрицательное",
+          "ok": true,
+          "got": "[1,-1]",
+          "want": "[1,-1]"
+        },
+        {
+          "note": "максимум уходит из окна",
+          "ok": true,
+          "got": "[7,4]",
+          "want": "[7,4]"
+        },
+        {
+          "note": "все отрицательные в начале",
+          "ok": true,
+          "got": "[7,7,7,7,7]",
+          "want": "[7,7,7,7,7]"
+        },
+        {
+          "note": "максимум выпадает несколько раз",
+          "ok": true,
+          "got": "[3,3,2,5]",
+          "want": "[3,3,2,5]"
+        },
+        {
+          "note": "все одинаковые — ловушка дедупликации",
+          "ok": true,
+          "got": "[4,4,4]",
+          "want": "[4,4,4]"
+        }
+      ],
+      "passed": 8,
+      "total": 8,
+      "perf": {
+        "ms": 4,
+        "limitMs": 200,
+        "correct": true,
+        "why": "60k элементов при k=15000: O(n) это единицы мс, O(n·k) — около секунды",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "Проверил решение. Создал файл `solution-sliding-window-max.js` с функцией `maxSlidingWindow`, написал тесты в `test-sliding-window-max.js` и успешно выполнил их через `node`. Все тесты прошли без ошибок.",
+    "problem": "sliding-window-max",
+    "run": 3
+  },
+  {
+    "path": "raw",
+    "secs": 36.775,
+    "extract": "блок кода (1)",
+    "chars": 2191,
+    "verdict": {
+      "cases": [
+        {
+          "note": "первый пример",
+          "ok": true,
+          "got": "4",
+          "want": "4"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "10",
+          "want": "10"
+        },
+        {
+          "note": "нет внутренних ячеек",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна ячейка",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "утечка через дыру в стене",
+          "ok": true,
+          "got": "14",
+          "want": "14"
+        },
+        {
+          "note": "глубокий колодец",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "наклонная плоскость — воды нет",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 7,
+      "total": 7,
+      "perf": {
+        "ms": 15,
+        "limitMs": 3000,
+        "correct": true,
+        "why": "200x200 со стеной по краю — 39204 ячеек воды, нужен эффективный обход",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction trapRainWater(heightMap) {\n  const m = heightMap.length;\n  if (m === 0) return 0;\n  const n = heightMap[0].length;\n  if (m <= 2 || n <= 2) return 0;\n\n  const visited = Array.from({ length: m }, () => Array(n).fill(false));\n\n  class MinHeap {\n    constructor() {\n      this.data = [];\n    }\n    push(node) {\n      this.data.push(node);\n      this._siftUp(this.data.length - 1);\n    }\n    pop() {\n      if (this.data.length === 0) return null;\n      const top = this.data[0];\n      const last = this.data.pop();\n      if (this.data.length > 0) {\n        this.data[0] = last;\n        this._siftDown(0);\n      }\n      return top;\n    }\n    _siftUp(i) {\n      const data = this.data;\n      while (i > 0) {\n        const p = (i - 1) >> 1;\n        if (data[p].h <= data[i].h) break;\n        [data[p], data[i]] = [data[i], data[p]];\n        i = p;\n      }\n    }\n    _siftDown(i) {\n      const data = this.data;\n      const n = data.length;\n      while (true) {\n        let l = i * 2 + 1;\n        let r = l + 1;\n        let smallest = i;\n        if (l < n && data[l].h < data[smallest].h) smallest = l;\n        if (r < n && data[r].h < data[smallest].h) smallest = r;\n        if (smallest === i) break;\n        [data[i], data[smallest]] = [data[smallest], data[i]];\n        i = smallest;\n      }\n    }\n  }\n\n  const heap = new MinHeap();\n\n  // Add all boundary cells to the heap\n  for (let i = 0; i < m; i++) {\n    for (let j = 0; j < n; j++) {\n      if (i === 0 || i === m - 1 || j === 0 || j === n - 1) {\n        heap.push({ h: heightMap[i][j], i, j });\n        visited[i][j] = true;\n      }\n    }\n  }\n\n  const dirs = [\n    [1, 0],\n    [-1, 0],\n    [0, 1],\n    [0, -1],\n  ];\n  let water = 0;\n\n  while (heap.data.length) {\n    const cell = heap.pop();\n    for (const [di, dj] of dirs) {\n      const ni = cell.i + di;\n      const nj = cell.j + dj;\n      if (\n        ni < 0 ||\n        ni >= m ||\n        nj < 0 ||\n        nj >= n ||\n        visited[ni][nj]\n      )\n        continue;\n      visited[ni][nj] = true;\n      const nh = heightMap[ni][nj];\n      if (cell.h > nh) water += cell.h - nh;\n      heap.push({ h: Math.max(nh, cell.h), i: ni, j: nj });\n    }\n  }\n\n  return water;\n}\n```",
+    "problem": "trap-rain-water-2d",
+    "run": 1
+  },
+  {
+    "path": "raw",
+    "secs": 22.786,
+    "extract": "блок кода (1)",
+    "chars": 2262,
+    "verdict": {
+      "cases": [
+        {
+          "note": "первый пример",
+          "ok": true,
+          "got": "4",
+          "want": "4"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "10",
+          "want": "10"
+        },
+        {
+          "note": "нет внутренних ячеек",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна ячейка",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "утечка через дыру в стене",
+          "ok": true,
+          "got": "14",
+          "want": "14"
+        },
+        {
+          "note": "глубокий колодец",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "наклонная плоскость — воды нет",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 7,
+      "total": 7,
+      "perf": {
+        "ms": 13,
+        "limitMs": 3000,
+        "correct": true,
+        "why": "200x200 со стеной по краю — 39204 ячеек воды, нужен эффективный обход",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction trapRainWater(heightMap) {\n    const m = heightMap.length;\n    if (m === 0) return 0;\n    const n = heightMap[0].length;\n    if (m <= 2 || n <= 2) return 0;\n\n    const visited = Array.from({ length: m }, () => Array(n).fill(false));\n    const heap = [];\n\n    function push(node) {\n        heap.push(node);\n        let i = heap.length - 1;\n        while (i > 0) {\n            const p = (i - 1) >> 1;\n            if (heap[p].h <= heap[i].h) break;\n            [heap[p], heap[i]] = [heap[i], heap[p]];\n            i = p;\n        }\n    }\n\n    function pop() {\n        if (heap.length === 0) return null;\n        const top = heap[0];\n        const last = heap.pop();\n        if (heap.length > 0) {\n            heap[0] = last;\n            let i = 0;\n            while (true) {\n                let l = i * 2 + 1;\n                let r = l + 1;\n                let smallest = i;\n                if (l < heap.length && heap[l].h < heap[smallest].h) smallest = l;\n                if (r < heap.length && heap[r].h < heap[smallest].h) smallest = r;\n                if (smallest === i) break;\n                [heap[i], heap[smallest]] = [heap[smallest], heap[i]];\n                i = smallest;\n            }\n        }\n        return top;\n    }\n\n    // push all boundary cells\n    for (let i = 0; i < m; i++) {\n        push({ x: i, y: 0, h: heightMap[i][0] });\n        push({ x: i, y: n - 1, h: heightMap[i][n - 1] });\n        visited[i][0] = true;\n        visited[i][n - 1] = true;\n    }\n    for (let j = 1; j < n - 1; j++) {\n        push({ x: 0, y: j, h: heightMap[0][j] });\n        push({ x: m - 1, y: j, h: heightMap[m - 1][j] });\n        visited[0][j] = true;\n        visited[m - 1][j] = true;\n    }\n\n    const dirs = [\n        [1, 0],\n        [-1, 0],\n        [0, 1],\n        [0, -1]\n    ];\n    let water = 0;\n\n    while (heap.length) {\n        const { x, y, h } = pop();\n        for (const [dx, dy] of dirs) {\n            const nx = x + dx, ny = y + dy;\n            if (nx < 0 || nx >= m || ny < 0 || ny >= n || visited[nx][ny]) continue;\n            visited[nx][ny] = true;\n            const nh = heightMap[nx][ny];\n            if (h > nh) water += h - nh;\n            push({ x: nx, y: ny, h: Math.max(nh, h) });\n        }\n    }\n\n    return water;\n}\n```",
+    "problem": "trap-rain-water-2d",
+    "run": 2
+  },
+  {
+    "path": "raw",
+    "secs": 30.295,
+    "extract": "блок кода (1)",
+    "chars": 2527,
+    "verdict": {
+      "cases": [
+        {
+          "note": "первый пример",
+          "ok": true,
+          "got": "4",
+          "want": "4"
+        },
+        {
+          "note": "второй пример",
+          "ok": true,
+          "got": "10",
+          "want": "10"
+        },
+        {
+          "note": "нет внутренних ячеек",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "одна ячейка",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        },
+        {
+          "note": "утечка через дыру в стене",
+          "ok": true,
+          "got": "14",
+          "want": "14"
+        },
+        {
+          "note": "глубокий колодец",
+          "ok": true,
+          "got": "9",
+          "want": "9"
+        },
+        {
+          "note": "наклонная плоскость — воды нет",
+          "ok": true,
+          "got": "0",
+          "want": "0"
+        }
+      ],
+      "passed": 7,
+      "total": 7,
+      "perf": {
+        "ms": 12,
+        "limitMs": 3000,
+        "correct": true,
+        "why": "200x200 со стеной по краю — 39204 ячеек воды, нужен эффективный обход",
+        "ok": true
+      },
+      "solved": true
+    },
+    "answer": "```js\nfunction trapRainWater(heightMap) {\n    const m = heightMap.length;\n    const n = heightMap[0].length;\n    if (m < 3 || n < 3) return 0;\n\n    const visited = Array.from({ length: m }, () => Array(n).fill(false));\n    const heap = new MinHeap();\n\n    // push all boundary cells\n    for (let i = 0; i < m; i++) {\n        heap.push({ x: i, y: 0, h: heightMap[i][0] });\n        heap.push({ x: i, y: n - 1, h: heightMap[i][n - 1] });\n        visited[i][0] = visited[i][n - 1] = true;\n    }\n    for (let j = 1; j < n - 1; j++) {\n        heap.push({ x: 0, y: j, h: heightMap[0][j] });\n        heap.push({ x: m - 1, y: j, h: heightMap[m - 1][j] });\n        visited[0][j] = visited[m - 1][j] = true;\n    }\n\n    const dirs = [\n        [1, 0],\n        [-1, 0],\n        [0, 1],\n        [0, -1]\n    ];\n    let water = 0;\n\n    while (heap.size() > 0) {\n        const cell = heap.pop();\n        for (const [dx, dy] of dirs) {\n            const nx = cell.x + dx;\n            const ny = cell.y + dy;\n            if (nx < 0 || nx >= m || ny < 0 || ny >= n || visited[nx][ny]) continue;\n            visited[nx][ny] = true;\n            const nh = heightMap[nx][ny];\n            if (cell.h > nh) water += cell.h - nh;\n            heap.push({ x: nx, y: ny, h: Math.max(nh, cell.h) });\n        }\n    }\n\n    return water;\n}\n\nclass MinHeap {\n    constructor() {\n        this.data = [];\n    }\n    size() {\n        return this.data.length;\n    }\n    push(item) {\n        this.data.push(item);\n        this._bubbleUp(this.data.length - 1);\n    }\n    pop() {\n        if (this.data.length === 0) return null;\n        const top = this.data[0];\n        const last = this.data.pop();\n        if (this.data.length > 0) {\n            this.data[0] = last;\n            this._bubbleDown(0);\n        }\n        return top;\n    }\n    _bubbleUp(i) {\n        const data = this.data;\n        while (i > 0) {\n            const p = (i - 1) >> 1;\n            if (data[p].h <= data[i].h) break;\n            [data[p], data[i]] = [data[i], data[p]];\n            i = p;\n        }\n    }\n    _bubbleDown(i) {\n        const data = this.data;\n        const n = data.length;\n        while (true) {\n            let l = i * 2 + 1;\n            let r = l + 1;\n            let smallest = i;\n            if (l < n && data[l].h < data[smallest].h) smallest = l;\n            if (r < n && data[r].h < data[smallest].h) smallest = r;\n            if (smallest === i) break;\n            [data[i], data[smallest]] = [data[smallest], data[i]];\n            i = smallest;\n        }\n    }\n}\n```",
+    "problem": "trap-rain-water-2d",
+    "run": 3
+  }
+]
