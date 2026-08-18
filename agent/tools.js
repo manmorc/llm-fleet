@@ -74,6 +74,20 @@ function ragConfig() {
   return { url: (url || '').replace(/\/$/, ''), token };
 }
 
+// Креды ЛИЧНОГО ДНЕВНИКА — отдельный ПРИВАТНЫЙ store на ЭТОЙ машине (127.0.0.1:8078), а не общий
+// архив флота. Дневник владельца не должен утекать другим агентам/машинам: своя база, свой токен,
+// bind только на localhost. Читается из ~/.rag-diary/diary.env.
+function diaryConfig() {
+  let url = process.env.DIARY_URL, token = process.env.DIARY_TOKEN;
+  if (!url || !token) {
+    try {
+      const env = fs.readFileSync(path.join(require('os').homedir(), '.rag-diary', 'diary.env'), 'utf8');
+      for (const line of env.split(/\r?\n/)) { const m = line.match(/^\s*(DIARY_URL|DIARY_TOKEN)\s*=\s*(.+?)\s*$/); if (m) { if (m[1] === 'DIARY_URL') url = url || m[2]; else token = token || m[2]; } }
+    } catch (_) {}
+  }
+  return { url: (url || '').replace(/\/$/, ''), token };
+}
+
 const REGISTRY = {
   list_dir: {
     safe: true,
@@ -180,6 +194,45 @@ const REGISTRY = {
         if (!items.length) return '(RAG: релевантных фактов не найдено)';
         return clip(items.map((it, i) => `[${i + 1}] ${it.text || it.content || it.chunk || JSON.stringify(it)}`).join('\n'));
       } catch (e) { return `RAG ошибка: ${e.message}`; }
+    },
+  },
+  // ── ЛИЧНЫЙ ДНЕВНИК (приватный, локальный) ────────────────────────────────────────────────────────
+  // Отдельно от rag_*: это личные записи владельца в ПРИВАТНОМ store на localhost, не в общем архиве
+  // флота. Запись безопасна (это данные самого владельца, локально, обратимо) — идёт без надзора,
+  // иначе «запиши в дневник» тормозило бы на подтверждении. Фильтр секретов работает в ядре store:
+  // токены/сид-фразы физически не индексируются.
+  diary_search: {
+    safe: true,
+    schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    description: 'Найти записи в ЛИЧНОМ дневнике владельца по смыслу (семантический поиск). Используй, когда владелец спрашивает о том, что он раньше записывал/отмечал/планировал в дневнике.',
+    run: async ({ query }) => {
+      const cfg = diaryConfig();
+      if (!cfg.url || !cfg.token) return 'Личный дневник не настроен (нет ~/.rag-diary/diary.env). Записей нет.';
+      try {
+        const res = await fetch(`${cfg.url}/search`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
+          body: JSON.stringify({ query, scope: 'diary', k: 6 }) });
+        if (!res.ok) return `Дневник ${res.status} (поиск недоступен)`;
+        const j = await res.json();
+        const items = j.results || j.matches || j.hits || (Array.isArray(j) ? j : []);
+        if (!items.length) return '(в дневнике по этому запросу ничего не найдено)';
+        return clip(items.map((it, i) => `[${i + 1}] ${it.text || it.content || it.chunk || JSON.stringify(it)}`).join('\n'));
+      } catch (e) { return `Дневник ошибка: ${e.message}`; }
+    },
+  },
+  diary_write: {
+    safe: true,
+    schema: { type: 'object', properties: { text: { type: 'string' }, title: { type: 'string', description: 'краткий заголовок записи (опц.)' } }, required: ['text'] },
+    description: 'Записать заметку в ЛИЧНЫЙ дневник владельца (приватно, только на этой машине). Используй, когда владелец просит записать/запомнить/отметить в дневник. Текст сохраняй ДОСЛОВНО, не пересказывай.',
+    run: async ({ text, title }) => {
+      const cfg = diaryConfig();
+      if (!cfg.url || !cfg.token) return 'Личный дневник не настроен (нет ~/.rag-diary/diary.env). Запись не сохранена.';
+      try {
+        const ts = Date.now();
+        const res = await fetch(`${cfg.url}/ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
+          body: JSON.stringify({ items: [{ scope: 'diary', source: 'diary', path: `diary/${ts}`, title: title || null, text, ts }] }) });
+        if (!res.ok) return `Дневник ${res.status} (запись не сохранена)`;
+        return '✔ записано в личный дневник. Найти позже — diary_search по смыслу.';
+      } catch (e) { return `Дневник ошибка: ${e.message}`; }
     },
   },
   // ── GIT ─────────────────────────────────────────────────────────────────────────────────────────

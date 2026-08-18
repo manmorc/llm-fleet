@@ -29,7 +29,12 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const DIR = path.join(os.homedir(), '.agent-bus');
-const HOLD_FLAG = path.join(DIR, 'keep-awake');          // ручное удержание (ярлык)
+const HOLD_FLAG = path.join(DIR, 'keep-awake');          // ручное удержание (ярлык) — БЕЗ таймаута
+// Сессионное удержание с ТАЙМАУТОМ: рабочая сессия (Claude) обновляет этот файл на каждом шаге.
+// Простой existsSync-флаг опасен — забыл снять, и машина не спит никогда. Здесь держим только пока
+// файл СВЕЖИЙ: перестала идти работа → через SESSION_TTL_MS протухает, и машина засыпает сама.
+const SESSION_HOLD = path.join(DIR, 'keep-awake.session');
+const SESSION_TTL_MS = parseInt(process.env.KEEPAWAKE_SESSION_TTL_MS || String(30 * 60 * 1000), 10);
 const BUS_LOG = path.join(DIR, `${process.env.FLEET_NODE_ID || 'desktop-tt4i69c'}.log`);
 const STATE = path.join(DIR, 'keep-awake.state');
 const TICK_MS = parseInt(process.env.KEEPAWAKE_TICK_MS || String(60 * 1000), 10);
@@ -80,8 +85,13 @@ async function busy() {
     const age = Date.now() - fs.statSync(BUS_LOG).mtimeMs;
     if (age < BUS_IDLE_MS) why.push(`шина активна (${Math.round(age / 60000)} мин назад)`);
   } catch (_) {}
-  // 4. Ручное удержание владельцем.
+  // 4. Ручное удержание владельцем (ярлык, без таймаута).
   if (fs.existsSync(HOLD_FLAG)) why.push('ручное удержание (файл-флаг)');
+  // 5. Сессионное удержание с таймаутом: держим, ТОЛЬКО пока флаг свежий. Протух — отпускаем.
+  try {
+    const age = Date.now() - fs.statSync(SESSION_HOLD).mtimeMs;
+    if (age < SESSION_TTL_MS) why.push(`рабочая сессия (${Math.round(age / 60000)} мин назад)`);
+  } catch (_) {}
   return why;
 }
 
