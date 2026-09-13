@@ -17,7 +17,14 @@ const keys = require('./keys'); // Ed25519 подпись/проверка от�
 // подпись проверяется ДО записи в лог, где текст ещё целый, и обрыв ПОКАЗА она поймать не может.
 const integrity = require('./bus-integrity');
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+// REDIS_URL: env → иначе ~/.config/tp-secrets/redis.env (13.09.2026: пароль убран из ~/.claude.json — Claude Code
+// делает авто-копии этого файла в ~/.claude/backups, и секрет в env MCP-сервера расползался по ним).
+function redisUrlFromSecrets() {
+  try { const fs = require('fs'), path = require('path');
+    const m = fs.readFileSync(path.join(os.homedir(), '.config', 'tp-secrets', 'redis.env'), 'utf8').match(/^REDIS_URL=(.+)$/m);
+    return m ? m[1].trim() : null; } catch (_) { return null; }
+}
+const REDIS_URL = process.env.REDIS_URL || redisUrlFromSecrets() || 'redis://127.0.0.1:6379';
 const AGENT_ID = (process.env.AGENT_ID || os.hostname()).trim();
 const AGENT_LABEL = process.env.AGENT_LABEL || '';
 const PRESENCE = 'agents:presence:';
