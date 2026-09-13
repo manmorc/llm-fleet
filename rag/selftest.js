@@ -10,14 +10,14 @@ const { openDb, ingest, search, scanSecret } = require('./lib');
 
   // фильтр приватного
   A(scanSecret('мой redis redis://:hunter2@host:6379 тут'), 'детектит redis-url с паролем');
-  A(scanSecret('token=8875080677:AAGflDD0X6u0PN4ICxaCkvRLuwinff0WROw'), 'детектит telegram-токен');
+  A(scanSecret('token=1234567890:AAFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEfake'), 'детектит telegram-токен');
   A(!scanSecret('обычный текст про бекмерж релиза 1.11'), 'обычный текст — не секрет');
 
   const db = openDb();
   const r = await ingest(db, [
     { scope: 'work', source: 'doc', path: 'backmerge.md', title: 'Backmerge', text: 'Бекмерж release в develop: мерить по diff PR, резолвить submodule к dev-line. 0-change PR валиден.' },
     { scope: 'agent', source: 'sess', path: 's1', title: 'agent-bus', text: 'agent-bus: связь между Claude Code через Redis. presence + inbox durable-лог. Не слать секреты по шине.' },
-    { scope: 'personal', source: 'note', path: 'n1', title: 'секрет', text: 'мой bot token=8875080677:AAGflDD0X6u0PN4ICxaCkvRLuwinff0WROw не индексировать' },
+    { scope: 'personal', source: 'note', path: 'n1', title: 'секрет', text: 'мой bot token=1234567890:AAFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEfake не индексировать' },
   ]);
   A(r.added >= 2, `проиндексировано ${r.added} чанков`);
   A(r.secret >= 1, `секрет отфильтрован (${r.secret})`);
