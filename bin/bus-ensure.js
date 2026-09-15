@@ -35,6 +35,8 @@ const PROBE_WAIT_MS = 20000;             // сколько ждём пробу �
 const argv = process.argv.slice(2);
 const FORCE_PROBE = argv.includes('--probe');
 const QUIET = argv.includes('--quiet');
+const LOCK = path.join(HOME, '.agent-bus', 'bus-ensure.lock');
+const LOCK_STALE_MS = 5 * 60 * 1000;   // ExecutionTimeLimit задания — 5 минут; дольше лок жить не может
 
 function localEnv() {
   const out = {};
@@ -147,7 +149,31 @@ async function probe() {
   return { ok: false, reason: 'не дошло за ' + (PROBE_WAIT_MS / 1000) + 'с' };
 }
 
+// Одновременный запуск двух сторожей — не теория: 15.09.2026 плановый тик наложился на ручной
+// прогон, оба прочитали один и тот же устаревший lastProbe и оба погнали пробу (две строки в логе
+// шины с разницей в 5 секунд). Безобидно, пока это лишний шум; опасно, когда оба одновременно
+// решат перезапустить персистер. Лок атомарный ('wx' — создать или упасть), с протуханием, иначе
+// один убитый процесс заблокировал бы сторожа навсегда.
+function acquireLock() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(LOCK, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), { flag: 'wx' });
+      return true;
+    } catch (e) {
+      if (e.code !== 'EEXIST') { warn('[ensure] лок не создан:', e.message); return true; } // не запираться из-за FS
+      let age = Infinity;
+      try { age = Date.now() - fs.statSync(LOCK).mtimeMs; } catch (_) {}
+      if (age > LOCK_STALE_MS) { try { fs.unlinkSync(LOCK); continue; } catch (_) {} }
+      return false;
+    }
+  }
+  return false;
+}
+const releaseLock = () => { try { fs.unlinkSync(LOCK); } catch (_) {} };
+
 (async () => {
+  if (!acquireLock()) { log('[ensure] другой экземпляр уже работает — выхожу'); return; }
+  process.on('exit', releaseLock);
   let st = status();
   if (st !== 'online') {
     warn('[ensure] статус', APP, '=', st);
