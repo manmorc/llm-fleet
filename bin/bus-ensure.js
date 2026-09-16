@@ -59,8 +59,15 @@ const log = (...a) => { if (!QUIET) console.log(new Date().toISOString(), ...a);
 const warn = (...a) => console.error(new Date().toISOString(), ...a);
 
 // pm2 на Windows — это pm2.cmd; execFileSync не запускает .cmd без shell, поэтому зовём через него.
+// ТАЙМАУТ ОБЯЗАТЕЛЕН. 16.09.2026 после перезагрузки сторож завис на вызове pm2 (демон был мёртв,
+// поднимался с нуля) и провисел так минуты, держа лок: pm2 пуст, шина без персистера, следующие
+// тики упираются в лок и выходят. Зависший надзиратель хуже отсутствующего — он ещё и занимает
+// место, выглядя работающим. Лучше упасть с ошибкой и дать следующему тику попробовать заново.
 function pm2(args) {
-  return execFileSync('pm2', args, { cwd: REPO, encoding: 'utf8', shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  return execFileSync('pm2', args, {
+    cwd: REPO, encoding: 'utf8', shell: true, stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 90000, killSignal: 'SIGKILL',
+  });
 }
 
 // pm2 jlist отдаёт JSON с дублирующимися ключами окружения (username/USERNAME) — JSON.parse это
@@ -161,9 +168,18 @@ function acquireLock() {
       return true;
     } catch (e) {
       if (e.code !== 'EEXIST') { warn('[ensure] лок не создан:', e.message); return true; } // не запираться из-за FS
-      let age = Infinity;
+      // Возраста мало: перезагрузка убивает владельца лока, но файл остаётся, и до протухания
+      // сторож стоит (поймано 16.09.2026 — после ребута лок пережил своего процесса). Спрашиваем
+      // саму систему, жив ли владелец: мёртвый лок снимаем сразу, не дожидаясь пяти минут.
+      let owner = null, age = Infinity;
+      try { owner = JSON.parse(fs.readFileSync(LOCK, 'utf8')).pid; } catch (_) {}
       try { age = Date.now() - fs.statSync(LOCK).mtimeMs; } catch (_) {}
-      if (age > LOCK_STALE_MS) { try { fs.unlinkSync(LOCK); continue; } catch (_) {} }
+      let alive = false;
+      if (owner) { try { process.kill(owner, 0); alive = true; } catch (_) { alive = false; } }
+      if (!alive || age > LOCK_STALE_MS) {
+        log('[ensure] снимаю лок' + (alive ? ' (протух)' : ' (владелец ' + owner + ' мёртв)'));
+        try { fs.unlinkSync(LOCK); continue; } catch (_) {}
+      }
       return false;
     }
   }
